@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Furnishka ERP Migration Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.6.0/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#ffffff;--bg2:#f7f7f5;--bg3:#f0f0ec;--text:#1a1a1a;--text2:#6b6b6b;--text3:#9b9b9b;--border:#e0e0dc;--blue:#2563eb;--green:#16a34a;--red:#dc2626;--amber:#d97706;--info-bg:#eff6ff;--info:#1d4ed8;--danger-bg:#fef2f2;--danger:#991b1b;--success-bg:#f0fdf4;--success:#166534;--radius:8px;--font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252525;--bg3:#2d2d2d;--text:#e8e8e8;--text2:#a0a0a0;--text3:#707070;--border:#3a3a3a;--info-bg:#1e293b;--info:#60a5fa;--danger-bg:#2d1a1a;--danger:#f87171;--success-bg:#1a2d1a;--success:#4ade80}}
+body{font-family:var(--font);background:var(--bg2);color:var(--text);font-size:14px;line-height:1.5}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+.header{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:12px 16px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border)}
+.header h1{font-size:18px;font-weight:600;flex:1}
+.metrics{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.metric{background:var(--bg);border-radius:var(--radius);padding:12px 16px;flex:1;min-width:140px;border:1px solid var(--border)}
+.metric .label{font-size:11px;color:var(--text2);margin-bottom:2px}
+.metric .value{font-size:22px;font-weight:600}
+.metric .sub{font-size:11px;color:var(--text3);margin-top:2px}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tab{padding:6px 14px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:4px}
+.tab:hover{background:var(--bg2)}.tab.active{background:var(--text);color:var(--bg);border-color:var(--text)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.filters select,.filters input{padding:6px 10px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text)}
+.filters input[type=text]{flex:1;min-width:160px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead th{padding:6px 8px;text-align:left;font-weight:600;font-size:11px;white-space:nowrap;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1}
+tbody td{padding:5px 8px;white-space:nowrap;border-bottom:1px solid var(--border)}
+.erp-col{background:var(--info-bg)}
+.row-pending{background:var(--danger-bg)}.row-edited{background:var(--info-bg)}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600}
+.badge-ok{background:var(--success-bg);color:var(--success)}.badge-pending{background:var(--danger-bg);color:var(--danger)}.badge-edit{background:var(--info-bg);color:var(--info)}
+.edit-input{width:100%;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)}
+.btn{padding:6px 14px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);cursor:pointer;color:var(--text);display:inline-flex;align-items:center;gap:4px}
+.btn:hover{background:var(--bg2)}.btn-primary{background:var(--text);color:var(--bg);border-color:var(--text)}
+.pager{display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--text2)}
+.pager button{padding:3px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);cursor:pointer;color:var(--text)}
+.upload-zone{background:var(--bg);border:2px dashed var(--border);border-radius:var(--radius);padding:60px 40px;text-align:center;cursor:pointer}
+.upload-zone:hover{border-color:var(--blue);background:var(--info-bg)}
+.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+.gen-card{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px}
+.gen-icon{width:40px;height:40px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:20px}
+.progress-bar{width:80px;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;transition:width 0.3s}
+.table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);max-height:60vh;overflow-y:auto}
+.toast{position:fixed;top:16px;right:16px;z-index:999;padding:10px 18px;border-radius:var(--radius);background:var(--info-bg);color:var(--info);font-size:13px;border:1px solid var(--info);display:flex;align-items:center;gap:6px;animation:slideIn 0.3s}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.mono{font-family:'SF Mono',Monaco,'Courier New',monospace;font-size:10px}
+@media(max-width:768px){.metrics{flex-direction:column}.gen-card{flex-direction:column;text-align:center}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useRef,useMemo} = React;
+const PS=30, COMPANY="Furnishka Tech Private Limited", STORE_KEY="fk-dash-data", EDIT_KEY="fk-dash-edits";
+
+function fD(d){if(!d)return"";if(d instanceof Date){const dd=String(d.getDate()).padStart(2,"0"),mm=String(d.getMonth()+1).padStart(2,"0");return`${dd}-${mm}-${d.getFullYear()}`}return String(d)}
+function fN(n){const v=Number(n);return isNaN(v)?"0":v.toLocaleString("en-IN",{maximumFractionDigits:0})}
+function fC(n){const v=Number(n);if(isNaN(v))return"₹0";if(v>=1e7)return`₹${(v/1e7).toFixed(2)} Cr`;if(v>=1e5)return`₹${(v/1e5).toFixed(2)} L`;return`₹${fN(v)}`}
+
+function genSE(rows){
+  const agg={};
+  rows.forEach(r=>{const ic=r["ERP Item Code"],fc=r["Fulfillment Centre"]||"Soukya_Rd-FC-1-BLR - FT",k=`${ic}||${fc}`;if(!agg[k])agg[k]={ic,fc,qty:0};agg[k].qty+=Number(r["Quantity"])||0});
+  const items=Object.values(agg);if(!items.length)return null;
+  return items.map((it,i)=>({"Posting Date":i===0?fD(new Date()):"","Series":i===0?"MAT-STE-":"","Is Opening":i===0?"Yes":"","Stock Entry Type":i===0?"Material Receipt":"","Company":i===0?COMPANY:"","Difference Account (Items)":"Temporary opening - FT","Conversion Factor (Items)":1,"Item Code (Items)":it.ic,"Qty (Items)":it.qty,"Qty as per Stock UOM (Items)":it.qty,"Stock UOM (Items)":"Nos","UOM (Items)":"Nos","Target Location/Zone (Items)":it.fc}));
+}
+function genSO(rows){
+  return rows.map(r=>{const od=r["Order Date"] instanceof Date?r["Order Date"]:new Date(r["Order Date"]),dd=new Date(od);dd.setDate(dd.getDate()+30);const q=Number(r["Quantity"])||0,it=Number(r["Item Total (Inc Tax)"])||0,rt=q>0?Math.round(it/q*100)/100:0;
+  return{"Customer":r["Customer"]||"","Customer Name":r["Customer Name.1"]||"","Order Type":r["Order Type"]||"Sales","Order Date":fD(od),"Company":r["Company"]||COMPANY,"Cost Center":r["Cost Center"]||"","Price List":r["Price List"]||"Standard Selling","Currency":r["Currency"]||"INR","Exchange Rate":r["Exchange Rate"]||1,"Additional Discount Percentage":r["Additional Discount Percentage"]||0,"Additional Discount Amount":r["Additional Discount Amount"]||0,"Payment Terms Template":r["Payment Terms Template"]||"","Fulfillment Warehouse":"Soukya_Rd-FC-1-BLR - FT","Delivery Date (Items)":fD(dd),"Quantity (Items)":q,"Item Code (Items)":r["ERP Item Code"]||r["SKU"]||"","Rate (Items)":rt,"Invenzo order id":r["Invenzo Sales Order Id"]||""}});
+}
+function genSI(rows){
+  return rows.map(r=>{const id=r["Invoice Date"] instanceof Date?r["Invoice Date"]:new Date(r["Invoice Date"]),q=Number(r["Quantity"])||0,it=Number(r["Item Total (Inc Tax)"])||0,rt=q>0?Math.round(it/q*100)/100:0;
+  return{"ID":"","Series":"FTBLR2627/.######","Customer":r["Customer"]||"","Customer Name":r["Customer Name.1"]||"","Posting Date":fD(id),"Posting Time":"","Edit Posting Date and Time":0,"Payment Due Date":fD(id),"Zoho Invoice No":r["Custom Zoho Invoice Number"]||"","Update Stock":1,"Source Warehouse":r["Fulfillment Centre"]||"Soukya_Rd-FC-1-BLR - FT","Item (Items)":r["ERP Item Code"]||"","Quantity (Items)":q,"Rate (Items)":rt,"Sales Order (Items)":r["ERP Order Id"]||"","Sales Order Item (Items)":"","Warehouse (Items)":r["Fulfillment Centre"]||"Soukya_Rd-FC-1-BLR - FT"}});
+}
+function dlXlsx(data,fn){const ws=XLSX.utils.json_to_sheet(data),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Upload");XLSX.writeFile(wb,fn)}
+
+function App(){
+  const [data,setData]=useState(null);
+  const [edits,setEdits]=useState({});
+  const [tab,setTab]=useState("overview");
+  const [fl,setFl]=useState({status:"all",store:"all",search:"",df:"",dt:""});
+  const [pg,setPg]=useState(0);
+  const [loading,setLoading]=useState(false);
+  const [toast,setToast]=useState("");
+  const fRef=useRef();
+
+  useEffect(()=>{try{const d=localStorage.getItem(STORE_KEY);if(d)setData(JSON.parse(d))}catch{}try{const e=localStorage.getItem(EDIT_KEY);if(e)setEdits(JSON.parse(e))}catch{}},[]);
+
+  const showToast=(m)=>{setToast(m);setTimeout(()=>setToast(""),3500)};
+
+  const handleFile=useCallback(async(e)=>{
+    const f=e.target.files?.[0];if(!f)return;setLoading(true);
+    const buf=await f.arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const parsed=XLSX.utils.sheet_to_json(ws,{defval:""});
+    setData(parsed);setPg(0);
+    try{localStorage.setItem(STORE_KEY,JSON.stringify(parsed))}catch{}
+    setLoading(false);showToast(`Loaded ${parsed.length} rows successfully`);
+  },[]);
+
+  const saveEdit=useCallback((idx,field,val)=>{
+    setEdits(prev=>{const next={...prev,[idx]:{...(prev[idx]||{}),[field]:val,_ts:Date.now(),_by:"user"}};
+    try{localStorage.setItem(EDIT_KEY,JSON.stringify(next))}catch{}return next});
+  },[]);
+
+  const stores=useMemo(()=>{if(!data)return[];return[...new Set(data.map(r=>r["Cost Center"]).filter(Boolean))].sort()},[data]);
+
+  const filtered=useMemo(()=>{
+    if(!data)return[];let rows=data.map((r,i)=>({...r,_i:i}));
+    if(fl.status==="matched")rows=rows.filter(r=>r["ERP Order Id"]&&r["ERP Order Id"]!=="Need to Punch in ERP");
+    else if(fl.status==="pending")rows=rows.filter(r=>r["ERP Order Id"]==="Need to Punch in ERP");
+    if(fl.store!=="all")rows=rows.filter(r=>r["Cost Center"]===fl.store);
+    if(fl.search){const q=fl.search.toLowerCase();rows=rows.filter(r=>[r["SKU"],r["Customer"],r["Customer Name.1"],r["Primary Contact Mobile"],r["ERP Order Id"],r["ERP Item Code"],r["Invenzo Sales Order Id"]].some(v=>String(v||"").toLowerCase().includes(q)))}
+    if(fl.df){const from=new Date(fl.df);rows=rows.filter(r=>new Date(r["Order Date"])>=from)}
+    if(fl.dt){const to=new Date(fl.dt);rows=rows.filter(r=>new Date(r["Order Date"])<=to)}
+    return rows;
+  },[data,fl]);
+
+  const stats=useMemo(()=>{
+    if(!data)return{};
+    const m=data.filter(r=>r["ERP Order Id"]&&r["ERP Order Id"]!=="Need to Punch in ERP");
+    const p=data.filter(r=>r["ERP Order Id"]==="Need to Punch in ERP");
+    return{total:data.length,matched:m.length,pending:p.length,
+      mVal:m.reduce((s,r)=>s+(Number(r["Item Total (Inc Tax)"])||0),0),
+      pVal:p.reduce((s,r)=>s+(Number(r["Item Total (Inc Tax)"])||0),0),
+      uSO:new Set(m.map(r=>r["ERP Order Id"])).size,
+      uSKU:new Set(data.map(r=>r["SKU"]).filter(Boolean)).size,
+      edits:Object.keys(edits).length,
+      fCnt:filtered.length,fVal:filtered.reduce((s,r)=>s+(Number(r["Item Total (Inc Tax)"])||0),0)};
+  },[data,edits,filtered]);
+
+  const tP=Math.ceil(filtered.length/PS);
+  const pRows=filtered.slice(pg*PS,(pg+1)*PS);
+
+  const handleGen=(type)=>{
+    const rows=filtered;if(!rows.length){showToast("No rows match filters");return}
+    if(type==="stock"){const mr=rows.filter(r=>r["ERP Item Code"]&&r["ERP Item Code"]!=="Need to Punch in ERP");if(!mr.length){showToast("No matched items");return}const out=genSE(mr);dlXlsx(out,`Stock_Entry_${new Date().toISOString().slice(0,10)}.xlsx`);showToast(`Stock Entry: ${out.length} items`)}
+    else if(type==="so"){const pr=rows.filter(r=>r["ERP Order Id"]==="Need to Punch in ERP");if(!pr.length){showToast("No pending items");return}const out=genSO(pr);dlXlsx(out,`Sales_Order_Upload_${new Date().toISOString().slice(0,10)}.xlsx`);showToast(`Sales Order: ${out.length} items`)}
+    else if(type==="si"){const mr=rows.filter(r=>r["ERP Order Id"]&&r["ERP Order Id"]!=="Need to Punch in ERP");if(!mr.length){showToast("No matched items");return}const out=genSI(mr);dlXlsx(out,`Sales_Invoice_Upload_${new Date().toISOString().slice(0,10)}.xlsx`);showToast(`Sales Invoice: ${out.length} items`)}
+  };
+
+  const exportEdits=()=>{const blob=new Blob([JSON.stringify(edits,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="erp_edits_backup.json";a.click();showToast("Edits exported")};
+  const importEdits=(e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const imp=JSON.parse(ev.target.result);setEdits(prev=>{const merged={...prev,...imp};localStorage.setItem(EDIT_KEY,JSON.stringify(merged));return merged});showToast(`Imported ${Object.keys(imp).length} edits`)}catch{showToast("Invalid JSON file")}};r.readAsText(f)};
+
+  if(loading)return React.createElement("div",{className:"wrap",style:{textAlign:"center",paddingTop:80}},React.createElement("div",{style:{fontSize:16,color:"var(--text2)"}},"Loading..."));
+
+  if(!data)return React.createElement("div",{className:"wrap"},
+    React.createElement("div",{className:"header"},React.createElement("h1",null,"Furnishka ERP Migration Dashboard")),
+    React.createElement("div",{className:"upload-zone",onClick:()=>fRef.current?.click()},
+      React.createElement("i",{className:"ti ti-database-import",style:{fontSize:48,color:"var(--text3)",display:"block",marginBottom:12}}),
+      React.createElement("p",{style:{fontSize:16,fontWeight:600,marginBottom:4}},"Upload working sheet"),
+      React.createElement("p",{style:{fontSize:13,color:"var(--text2)"}},"Item Level Invoice Data Working - Final for Review.xlsx"),
+      React.createElement("input",{ref:fRef,type:"file",accept:".xlsx,.xls",onChange:handleFile,style:{display:"none"}})
+    )
+  );
+
+  const TabBtn=({k,icon,label})=>React.createElement("div",{className:`tab ${tab===k?"active":""}`,onClick:()=>{setTab(k);setPg(0)}},React.createElement("i",{className:`ti ${icon}`,style:{fontSize:14}}),label);
+
+  return React.createElement("div",{className:"wrap"},
+    toast&&React.createElement("div",{className:"toast"},React.createElement("i",{className:"ti ti-check",style:{fontSize:16}}),toast),
+
+    React.createElement("div",{className:"header"},
+      React.createElement("h1",null,"Furnishka ERP migration"),
+      React.createElement("span",{style:{fontSize:12,color:"var(--text2)"}},`${fN(stats.total)} items`),
+      React.createElement("button",{className:"btn",onClick:()=>fRef.current?.click()},React.createElement("i",{className:"ti ti-upload"}),"Re-upload"),
+      React.createElement("input",{ref:fRef,type:"file",accept:".xlsx,.xls",onChange:handleFile,style:{display:"none"}})
+    ),
+
+    React.createElement("div",{className:"metrics"},
+      React.createElement("div",{className:"metric"},React.createElement("div",{className:"label"},"Total items"),React.createElement("div",{className:"value"},fN(stats.total)),React.createElement("div",{className:"sub"},`${stats.uSKU} unique SKUs`)),
+      React.createElement("div",{className:"metric"},React.createElement("div",{className:"label"},"SO mapped"),React.createElement("div",{className:"value",style:{color:"var(--green)"}},fN(stats.matched)),React.createElement("div",{className:"sub"},fC(stats.mVal))),
+      React.createElement("div",{className:"metric"},React.createElement("div",{className:"label"},"SO pending"),React.createElement("div",{className:"value",style:{color:"var(--red)"}},fN(stats.pending)),React.createElement("div",{className:"sub"},fC(stats.pVal))),
+      React.createElement("div",{className:"metric"},React.createElement("div",{className:"label"},"Progress"),React.createElement("div",{className:"value",style:{color:"var(--blue)"}},`${stats.total?Math.round(stats.matched/stats.total*100):0}%`),React.createElement("div",{className:"sub"},`${stats.uSO} unique SOs`))
+    ),
+
+    React.createElement("div",{className:"tabs"},
+      React.createElement(TabBtn,{k:"overview",icon:"ti-layout-dashboard",label:"Overview"}),
+      React.createElement(TabBtn,{k:"data",icon:"ti-table",label:"All data"}),
+      React.createElement(TabBtn,{k:"pending",icon:"ti-alert-circle",label:`Pending (${stats.pending})`}),
+      React.createElement(TabBtn,{k:"generate",icon:"ti-file-export",label:"Generate files"}),
+      React.createElement("div",{style:{flex:1}}),
+      React.createElement("button",{className:"btn",onClick:exportEdits,style:{fontSize:11}},React.createElement("i",{className:"ti ti-download"}),"Export edits"),
+      React.createElement("label",{className:"btn",style:{fontSize:11,cursor:"pointer"}},React.createElement("i",{className:"ti ti-upload"}),"Import edits",React.createElement("input",{type:"file",accept:".json",onChange:importEdits,style:{display:"none"}}))
+    ),
+
+    (tab!=="generate")&&React.createElement("div",{className:"filters"},
+      React.createElement("select",{value:fl.status,onChange:e=>{setFl(f=>({...f,status:e.target.value}));setPg(0)}},React.createElement("option",{value:"all"},"All status"),React.createElement("option",{value:"matched"},"Mapped"),React.createElement("option",{value:"pending"},"Pending")),
+      React.createElement("select",{value:fl.store,onChange:e=>{setFl(f=>({...f,store:e.target.value}));setPg(0)}},React.createElement("option",{value:"all"},"All stores"),...stores.map(s=>React.createElement("option",{key:s,value:s},s.replace(/ - FT$/,"")))),
+      React.createElement("input",{type:"date",value:fl.df,onChange:e=>{setFl(f=>({...f,df:e.target.value}));setPg(0)}}),
+      React.createElement("input",{type:"date",value:fl.dt,onChange:e=>{setFl(f=>({...f,dt:e.target.value}));setPg(0)}}),
+      React.createElement("input",{type:"text",value:fl.search,onChange:e=>{setFl(f=>({...f,search:e.target.value}));setPg(0)},placeholder:"Search SKU, customer, mobile, order..."}),
+      React.createElement("button",{className:"btn",onClick:()=>{setFl({status:"all",store:"all",search:"",df:"",dt:""});setPg(0)},style:{fontSize:11}},React.createElement("i",{className:"ti ti-x"}),"Clear")
+    ),
+
+    tab==="overview"&&React.createElement("div",null,
+      React.createElement("div",{style:{fontSize:12,color:"var(--text2)",marginBottom:10}},`Showing ${fN(filtered.length)} items — ${fC(stats.fVal)}`),
+      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+        React.createElement("div",{className:"card"},
+          React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:10}},"Store-wise progress"),
+          ...stores.filter(s=>filtered.some(r=>r["Cost Center"]===s)).slice(0,12).map(s=>{
+            const sr=filtered.filter(r=>r["Cost Center"]===s),mc=sr.filter(r=>r["ERP Order Id"]!=="Need to Punch in ERP").length,pct=sr.length?Math.round(mc/sr.length*100):0;
+            return React.createElement("div",{key:s,style:{display:"flex",alignItems:"center",gap:6,fontSize:12,marginBottom:5}},
+              React.createElement("span",{style:{flex:1,color:"var(--text2)"}},s.replace(/^\d+ - /,"").replace(/ - FT$/,"")),
+              React.createElement("span",{style:{minWidth:30,textAlign:"right"}},sr.length),
+              React.createElement("div",{className:"progress-bar"},React.createElement("div",{className:"progress-fill",style:{width:`${pct}%`,background:pct===100?"var(--green)":"var(--blue)"}})),
+              React.createElement("span",{style:{minWidth:30,textAlign:"right",fontSize:11,color:pct===100?"var(--green)":"var(--text3)"}},`${pct}%`)
+            )})
+        ),
+        React.createElement("div",{className:"card"},
+          React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:12}},"Generate upload files"),
+          [{t:"stock",l:"Stock entry (material receipt)",i:"ti-box",d:"Aggregated items → fulfillment WH"},
+           {t:"so",l:"Sales order (pending)",i:"ti-file-text",d:"Pending items → SO template"},
+           {t:"si",l:"Sales invoice (against SO)",i:"ti-receipt",d:"Matched items → SI template with SO ref"}
+          ].map((g,i)=>React.createElement("div",{key:g.t,className:"gen-card"},
+            React.createElement("i",{className:`ti ${g.i}`,style:{fontSize:22,color:"var(--text2)"}}),
+            React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:13,fontWeight:600}},g.l),React.createElement("div",{style:{fontSize:11,color:"var(--text2)"}},g.d)),
+            React.createElement("button",{className:"btn",onClick:()=>handleGen(g.t)},React.createElement("i",{className:"ti ti-download"}),"Download")
+          ))
+        )
+      )
+    ),
+
+    tab==="generate"&&React.createElement("div",null,
+      [{t:"stock",l:"Stock entry — material receipt",i:"ti-box",c:"var(--green)",bg:"var(--success-bg)",
+        d:"Aggregates all matched ERP Item Codes with total quantities into one Material Receipt per fulfillment warehouse. Upload FIRST so ERP recognizes stock.",f:"Only matched items. Respects current filters."},
+       {t:"so",l:"Sales order — pending orders",i:"ti-file-text",c:"var(--blue)",bg:"var(--info-bg)",
+        d:"Generates SO upload for 'Need to Punch' items. Rate = Item Total Inc Tax ÷ Qty. Delivery = Order Date + 30 days.",f:"Only pending items. All 18 template columns."},
+       {t:"si",l:"Sales invoice — against sales orders",i:"ti-receipt",c:"var(--amber)",bg:"#fef3c7",
+        d:"Generates SI upload for matched items with SO references. 'Sales Order Item' hash left blank — fill after SO export.",f:"Only matched items with ERP Order Id."}
+      ].map(g=>React.createElement("div",{key:g.t,className:"gen-card",style:{padding:20,flexDirection:"column",alignItems:"stretch"}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12}},
+          React.createElement("div",{className:"gen-icon",style:{background:g.bg}},React.createElement("i",{className:`ti ${g.i}`,style:{color:g.c}})),
+          React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:15,fontWeight:600}},g.l),React.createElement("div",{style:{fontSize:11,color:"var(--text2)"}},g.f)),
+          React.createElement("button",{className:"btn btn-primary",onClick:()=>handleGen(g.t)},React.createElement("i",{className:"ti ti-download"}),"Download .xlsx")
+        ),
+        React.createElement("div",{style:{fontSize:12,color:"var(--text2)",marginTop:8,lineHeight:1.6}},g.d)
+      ))
+    ),
+
+    (tab==="data"||tab==="pending")&&React.createElement("div",null,
+      React.createElement("div",{className:"table-wrap"},
+        React.createElement("table",null,
+          React.createElement("thead",null,React.createElement("tr",null,
+            ["#","Status","Invenzo SO","Customer","Name","Mobile","SKU","Item","Qty","Inc Tax ₹","ERP date","ERP order ID","ERP item code"].map((h,i)=>
+              React.createElement("th",{key:i,className:i>=10?"erp-col":"",style:i===12?{minWidth:150}:i===11?{minWidth:130}:{}},h))
+          )),
+          React.createElement("tbody",null,
+            !pRows.length&&React.createElement("tr",null,React.createElement("td",{colSpan:13,style:{textAlign:"center",padding:40,color:"var(--text2)"}},"No rows match")),
+            ...pRows.map(r=>{
+              const isP=r["ERP Order Id"]==="Need to Punch in ERP",hasE=edits[r._i];
+              return React.createElement("tr",{key:r._i,className:isP?(hasE?"row-edited":"row-pending"):""},
+                React.createElement("td",null,r._i+1),
+                React.createElement("td",null,React.createElement("span",{className:`badge ${isP?(hasE?"badge-edit":"badge-pending"):"badge-ok"}`},isP?(hasE?"Edited":"Pending"):"Mapped")),
+                React.createElement("td",null,r["Invenzo Sales Order Id"]),
+                React.createElement("td",{style:{fontSize:10}},r["Customer"]),
+                React.createElement("td",{style:{maxWidth:90,overflow:"hidden",textOverflow:"ellipsis"},title:r["Customer Name.1"]},r["Customer Name.1"]),
+                React.createElement("td",null,r["Primary Contact Mobile"]?String(Math.round(Number(r["Primary Contact Mobile"]))):""),
+                React.createElement("td",{className:"mono"},r["SKU"]),
+                React.createElement("td",{style:{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis"},title:r["Item Desc"]},r["Item Desc"]),
+                React.createElement("td",{style:{textAlign:"right"}},r["Quantity"]),
+                React.createElement("td",{style:{textAlign:"right"}},fN(r["Item Total (Inc Tax)"])),
+                isP?React.createElement("td",{className:"erp-col"},React.createElement("input",{className:"edit-input",value:edits[r._i]?.erp_dt||"",onChange:e=>saveEdit(r._i,"erp_dt",e.target.value),placeholder:"DD-MM-YYYY"})):
+                  React.createElement("td",{className:"erp-col",style:{fontSize:10}},r["ERP Order Date"]),
+                isP?React.createElement("td",{className:"erp-col"},React.createElement("input",{className:"edit-input",value:edits[r._i]?.erp_id||"",onChange:e=>saveEdit(r._i,"erp_id",e.target.value),placeholder:"SAL-ORD-..."})):
+                  React.createElement("td",{className:"erp-col mono"},r["ERP Order Id"]),
+                isP?React.createElement("td",{className:"erp-col"},React.createElement("input",{className:"edit-input",value:edits[r._i]?.erp_ic||"",onChange:e=>saveEdit(r._i,"erp_ic",e.target.value),placeholder:"Item code"})):
+                  React.createElement("td",{className:"erp-col mono"},r["ERP Item Code"])
+              )})
+          )
+        )
+      ),
+      tP>1&&React.createElement("div",{className:"pager"},
+        React.createElement("span",null,`${pg*PS+1}–${Math.min((pg+1)*PS,filtered.length)} of ${fN(filtered.length)}`),
+        React.createElement("div",{style:{display:"flex",gap:4}},
+          React.createElement("button",{onClick:()=>setPg(0),disabled:pg===0},"«"),
+          React.createElement("button",{onClick:()=>setPg(p=>Math.max(0,p-1)),disabled:pg===0},"‹"),
+          React.createElement("span",{style:{padding:"3px 8px"}},`${pg+1}/${tP}`),
+          React.createElement("button",{onClick:()=>setPg(p=>Math.min(tP-1,p+1)),disabled:pg>=tP-1},"›"),
+          React.createElement("button",{onClick:()=>setPg(tP-1),disabled:pg>=tP-1},"»")
+        )
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
