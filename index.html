@@ -59,6 +59,7 @@ tbody td{padding:5px 8px;white-space:nowrap;border-bottom:1px solid var(--border
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef,useMemo} = React;
 const PS=30, COMPANY="Furnishka Tech Private Limited", STORE_KEY="fk-dash-data", EDIT_KEY="fk-dash-edits";
+const SHEETS_URL = "https://script.google.com/macros/s/AKfycbzgkpxW6pu5nQIVS-7o95MBwWeLnW2NjXyoKGWficOS1GseQY0_wIkZz-AYDddj_O44/exec";
 
 function fD(d){if(!d)return"";if(d instanceof Date){const dd=String(d.getDate()).padStart(2,"0"),mm=String(d.getMonth()+1).padStart(2,"0");return`${dd}-${mm}-${d.getFullYear()}`}return String(d)}
 function fN(n){const v=Number(n);return isNaN(v)?"0":v.toLocaleString("en-IN",{maximumFractionDigits:0})}
@@ -90,7 +91,21 @@ function App(){
   const [toast,setToast]=useState("");
   const fRef=useRef();
 
-  useEffect(()=>{try{const d=localStorage.getItem(STORE_KEY);if(d)setData(JSON.parse(d))}catch{}try{const e=localStorage.getItem(EDIT_KEY);if(e)setEdits(JSON.parse(e))}catch{}},[]);
+  // Load Excel data from localStorage (per-device)
+useEffect(()=>{
+  try{const d=localStorage.getItem(STORE_KEY);if(d)setData(JSON.parse(d))}catch{}
+},[]);
+
+// Load edits from Google Sheets (shared) and poll every 30s
+useEffect(()=>{
+  const load=async()=>{
+    try{const res=await fetch(SHEETS_URL);const remote=await res.json();setEdits(remote)}
+    catch(err){console.warn("Could not load edits from Sheets",err)}
+  };
+  load();
+  const interval=setInterval(load,30000);
+  return()=>clearInterval(interval);
+},[]);
 
   const showToast=(m)=>{setToast(m);setTimeout(()=>setToast(""),3500)};
 
