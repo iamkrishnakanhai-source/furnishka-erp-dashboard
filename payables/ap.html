@@ -1,0 +1,398 @@
+<!--
+Furnishka · Accounts Payable — Procure to Pay
+Custom HTML Block field: html
+v29 · 06-Oct-2026 · full rebuild, replaces the whole `html` field
+
+SINGLE SOURCE OF TRUTH: the server-side Query Report "AP Procure to Pay Master".
+Every KPI, chart, table, drill-down, export and reconciliation on this page is a
+filtered view of that one report, plus two direct reads that exist only to prove
+it — the GL Entry sum on the payable control, and the Supplier master roster.
+No DocType is queried for a figure that the report already carries.
+
+WHAT CHANGED FROM v28.2, AND WHY
+  · Eleven stacked patch layers (v18 … v28.2) are gone. One generation renders.
+  · The AP Aging tab no longer renders three tables and hides two of them. It
+    renders the statement, the six-bucket strip and ONE merged supplier table.
+  · That merged table is now computed from the report, not scraped out of the
+    DOM of the tables it replaced. The capture-gap warning is therefore gone:
+    there is one read, one model, one paint, so the two sides cannot disagree.
+  · Four Overview cards carried style="display:none" and are removed with their
+    computations: the block strip, the subledger-to-GL table and the exception
+    census. The AP control tie survives as a KPI and as the Ageing statement.
+  · Removed because the script made them permanently invisible: po-advnote,
+    pa-note, vb-why, vc-why, dr-sub, cls-open, the ag-ledger card, every card
+    subtitle, and the original ag-kpis / ag-chart / ag-table / ag-pager.
+  · Project and Bank filters stay withdrawn (v20). Bank is still a column and a
+    chart dimension; it is not a scope filter.
+
+TWO BOOKING ROUTES, both visible and never mixed:
+  1. Accounts with Inventory   PO -> GRN -> PI -> Payment -> GL
+  2. Direct Invoice Booking    PI -> GL, with no PO and no GRN
+The PO and GRN tabs carry route 1 only. Direct bills enter at the invoice stage.
+
+STATE-WISE GSTIN: AP is split by the company's GST registration, resolved by the
+report from document GSTIN, company address and the Cost Centre tree — never
+from North / South / East / West. Access is enforced by the report on the server.
+Writes happen ONLY to "AP Location Classification Override", from the Categorise
+panel, and every one of them is reversible.
+
+KNOWN, VERIFIED, NOT PAPERED OVER:
+  · Item-level GST does NOT tie to posted tax, so all statutory tax on this page
+    comes from the PI Tax grain and never from item fields.
+  · is_tax_withholding_account is unreliable, so TDS is resolved by account name.
+  · No Payment Entry anywhere references a Purchase Order, so the advance card
+    reports unapplied supplier cash instead of showing a PO advance of 0.00.
+  · Almost no supplier payment carries a clearance date, so bank reconciliation
+    state is reported as an exception, not as a footnote.
+  · Party ledger is credit minus debit: Cr positive = owed, Dr negative = net
+    receivable. Dr balances are reclassified under Schedule III, never netted.
+-->
+<div data-fk-block="ap-analysis" data-fk="root">
+
+<header class="fk-head">
+  <div>
+    <div class="fk-eyebrow">Furnishka Tech Private Limited &middot; Finance</div>
+    <h2 class="fk-title">Accounts Payable &mdash; Procure to Pay</h2>
+    <span class="fk-dept">Finance Department</span>
+  </div>
+  <div class="fk-head-act">
+    <div class="fk-asof" data-fk="asof">&mdash;</div>
+    <button type="button" class="fk-btn" data-fk="refresh">Refresh</button>
+  </div>
+</header>
+
+<section class="fk-period" aria-label="Reporting period">
+  <div class="fk-presets" data-fk="presets" role="group" aria-label="Period presets"></div>
+  <div class="fk-dates">
+    <label>From<input type="date" data-fk="from"></label>
+    <label>To<input type="date" data-fk="to"></label>
+    <label>Ledger as of<input type="date" data-fk="asofin"></label>
+    <button type="button" class="fk-btn fk-btn-primary" data-fk="apply">Apply</button>
+    <button type="button" class="fk-btn fk-btn-ghost" data-fk="reset" title="Reset From, To and Ledger as of to the current financial year">Reset to FY</button>
+  </div>
+</section>
+
+<section class="fk-filters" aria-label="Scope filters">
+  <label>AP Location / GSTIN<select data-fk="f-loc"><option value="">Combined</option></select></label>
+  <label>Cost Center<select data-fk="f-cc"><option value="">All cost centres</option></select></label>
+  <label>Supplier<select data-fk="f-supplier"><option value="">All suppliers</option></select></label>
+  <label>Supplier group<select data-fk="f-sg"><option value="">All groups</option></select></label>
+  <label>Department<select data-fk="f-dept"><option value="">All departments</option></select></label>
+  <label>Invoice route<select data-fk="f-src">
+      <option value="">All routes</option>
+      <option value="Inventory P2P">Inventory P2P</option>
+      <option value="Direct Expense/Service Bill">Direct Expense / Service Bill</option>
+    </select></label>
+  <label>Bank recon state<select data-fk="f-recon">
+      <option value="">Any</option>
+      <option value="Bank Unreconciled">Bank Unreconciled</option>
+      <option value="Bank Reconciled">Bank Reconciled</option>
+    </select></label>
+  <button type="button" class="fk-btn fk-btn-ghost" data-fk="clearf">Clear filters</button>
+</section>
+
+<p class="fk-scope" data-fk="scope">&nbsp;</p>
+
+<!-- ── the inventory cycle over the calendar ─────────────────────────────── -->
+<section class="fk-card fk-track">
+  <div class="fk-ch">
+    <div><h3 style="--tone:var(--s1)">The inventory procure-to-pay cycle over time</h3></div>
+    <div class="fk-chart-controls">
+      <label class="fk-chart-grain">Grain
+        <select data-fk="f-grain" aria-label="Timeline grain">
+          <option value="month">Monthly</option><option value="week">Weekly</option><option value="day">Daily</option>
+        </select>
+      </label>
+      <div class="fk-toggle" role="group" aria-label="Timeline mode">
+        <button type="button" data-fk="tl-abs" aria-pressed="true">Value</button>
+        <button type="button" data-fk="tl-cum" aria-pressed="false">Cumulative</button>
+      </div>
+    </div>
+  </div>
+  <div class="fk-legend" data-fk="tl-legend"></div>
+  <div class="fk-svgwrap"><svg data-fk="timeline" viewBox="0 0 1200 300" role="img" aria-label="Timeline of orders, receipts, invoices and payments"></svg></div>
+  <div class="fk-tlfoot" data-fk="tl-foot"></div>
+</section>
+
+<nav class="fk-tabs" data-fk="tabs" role="tablist" aria-label="Analysis blocks"></nav>
+
+<!-- ══ 1 · Overview ═══════════════════════════════════════════════════════ -->
+<section class="fk-panel" data-fk="panel-overview" role="tabpanel">
+  <div class="fk-kpis" data-fk="ov-kpis"></div>
+
+  <div class="fk-card">
+    <div class="fk-ch"><div><h3 style="--tone:var(--s2)">Where the spend actually enters the books</h3></div></div>
+    <div class="fk-outrows" data-fk="ov-routes"></div>
+  </div>
+
+  <div class="fk-card">
+    <div class="fk-ch"><div><h3 style="--tone:var(--s4)">Each GST registration proved against the ledger</h3></div></div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="ov-locrec"></table></div>
+    <div class="fk-note" data-fk="ov-locnote"></div>
+  </div>
+</section>
+
+<!-- ══ 2 · Purchase Orders ════════════════════════════════════════════════ -->
+<section class="fk-panel" data-fk="panel-po" role="tabpanel" hidden>
+  <div class="fk-kpis" data-fk="po-kpis"></div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s1)">What was committed, what landed, what is still open</h3></div>
+      <div class="fk-ch-act"><button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="po-export">CSV</button></div>
+    </div>
+    <div class="fk-two">
+      <div class="fk-svgwrap"><svg data-fk="po-status" viewBox="0 0 620 300" role="img" aria-label="Purchase order value by status"></svg></div>
+      <div class="fk-svgwrap"><svg data-fk="po-bank" viewBox="0 0 620 300" role="img" aria-label="Advances released by company bank"></svg></div>
+    </div>
+    <div class="fk-tblhead">
+      <input type="search" data-fk="po-search" placeholder="Search purchase order or vendor…" aria-label="Search purchase orders">
+    </div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="po-table"></table></div>
+    <div class="fk-pager" data-fk="po-pager"></div>
+  </div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s3)">Follow the orders released in a month, wherever they ended up</h3></div>
+      <div class="fk-toggle" role="group" aria-label="Cohort or activity">
+        <button type="button" data-fk="co-cohort" aria-pressed="true">PO cohort</button>
+        <button type="button" data-fk="co-activity" aria-pressed="false">Period activity</button>
+      </div>
+    </div>
+    <div class="fk-svgwrap"><svg data-fk="po-cohort" viewBox="0 0 1200 300" role="img" aria-label="Purchase order cohort progression"></svg></div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="co-table"></table></div>
+  </div>
+</section>
+
+<!-- ══ 3 · Goods Receipt ══════════════════════════════════════════════════ -->
+<section class="fk-panel" data-fk="panel-grn" role="tabpanel" hidden>
+  <div class="fk-kpis" data-fk="gr-kpis"></div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s3)">What was booked in, and what has not been billed</h3></div>
+      <div class="fk-toggle" role="group" aria-label="GRN view">
+        <button type="button" data-fk="gr-docs" aria-pressed="true">GRN documents</button>
+        <button type="button" data-fk="gr-vend" aria-pressed="false">Vendor summary</button>
+      </div>
+    </div>
+    <div class="fk-svgwrap"><svg data-fk="gr-trend" viewBox="0 0 1200 260" role="img" aria-label="Receipts against invoices over time"></svg></div>
+    <div class="fk-tblhead">
+      <input type="search" data-fk="gr-search" placeholder="Search receipt or vendor…" aria-label="Search goods receipts">
+      <button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="gr-export">CSV</button>
+    </div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="gr-table"></table></div>
+    <div class="fk-pager" data-fk="gr-pager"></div>
+  </div>
+</section>
+
+<!-- ══ 4 · Invoices & Payments ════════════════════════════════════════════ -->
+<section class="fk-panel" data-fk="panel-inv" role="tabpanel" hidden>
+  <div class="fk-kpis" data-fk="in-kpis"></div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s2)">Everything that entered the books this period</h3></div>
+      <div class="fk-ch-act"><button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="in-export">CSV</button></div>
+    </div>
+    <div class="fk-tblhead">
+      <input type="search" data-fk="in-search" placeholder="Search invoice, vendor or supplier bill no…" aria-label="Search invoices">
+    </div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="in-table"></table></div>
+    <div class="fk-pager" data-fk="in-pager"></div>
+  </div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s4)">What went out, through which company instrument</h3></div>
+      <div class="fk-ch-act">
+        <div class="fk-toggle" role="group" aria-label="Payment view">
+          <button type="button" data-fk="pa-reg" aria-pressed="true">Payment register</button>
+          <button type="button" data-fk="pa-det" aria-pressed="false">Allocation detail</button>
+        </div>
+        <button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="pa-export">CSV</button>
+      </div>
+    </div>
+    <div class="fk-kpis" data-fk="pa-kpis"></div>
+    <div class="fk-instr" data-fk="pa-instr"></div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="pa-table"></table></div>
+    <div class="fk-pager" data-fk="pa-pager"></div>
+  </div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s1)">Supplier true purchase</h3></div>
+      <div class="fk-ch-act"><button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="tp-export">CSV</button></div>
+    </div>
+    <div class="fk-tblhead">
+      <input type="search" data-fk="tp-search" placeholder="Search vendor…" aria-label="Search vendors">
+    </div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="tp-table"></table></div>
+    <div class="fk-pager" data-fk="tp-pager"></div>
+  </div>
+</section>
+
+<!-- ══ 5 · Vendor Credits ═════════════════════════════════════════════════
+     ERPNext has no Vendor Credit doctype, so no single door is the answer.
+     A credit arrives through exactly three, and each is shown as its own. -->
+<section class="fk-panel" data-fk="panel-vcred" role="tabpanel" hidden>
+  <div class="fk-kpis" data-fk="vc-kpis"></div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s5)">Door 1 &middot; purchase returns with credit still open</h3></div>
+      <div class="fk-ch-act"><button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="vc-dn-export">CSV</button></div>
+    </div>
+    <div class="fk-tblhead">
+      <input type="search" data-fk="vc-search" placeholder="Search vendor or document…" aria-label="Search vendor credits">
+    </div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="vc-dn-table"></table></div>
+    <div class="fk-pager" data-fk="vc-dn-pager"></div>
+  </div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s3)">Door 2 &middot; payments carrying an unapplied balance</h3></div>
+      <div class="fk-ch-act"><button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="vc-pe-export">CSV</button></div>
+    </div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="vc-pe-table"></table></div>
+    <div class="fk-pager" data-fk="vc-pe-pager"></div>
+  </div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--warn)">Door 3 &middot; journal credits on the payable account</h3></div>
+      <div class="fk-ch-act"><button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="vc-je-export">CSV</button></div>
+    </div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="vc-je-table"></table></div>
+    <div class="fk-pager" data-fk="vc-je-pager"></div>
+  </div>
+</section>
+
+<!-- ══ 6 · Categorise AP Location — managers only ═════════════════════════ -->
+<section class="fk-panel" data-fk="panel-cls" role="tabpanel" hidden>
+  <div class="fk-card" data-fk="cls">
+    <div class="fk-ch"><div><h3 style="--tone:var(--s4)">Categorise AP Location</h3></div></div>
+    <nav class="fk-toggle fk-cls-tabs" data-fk="cls-tabs" role="group" aria-label="Classification views"></nav>
+    <section data-fk="cls-queue">
+      <div class="fk-cls-bar">
+        <input type="search" data-fk="cls-q" placeholder="Search document, supplier or reason…" aria-label="Search queue">
+        <button type="button" class="fk-btn fk-xs" data-cls="blr">Assign BLR &mdash; Karnataka</button>
+        <button type="button" class="fk-btn fk-xs" data-cls="jdp">Assign JDP &mdash; Rajasthan</button>
+        <button type="button" class="fk-btn fk-btn-ghost fk-xs" data-cls="allf">Select all filtered</button>
+        <button type="button" class="fk-btn fk-btn-ghost fk-xs" data-cls="clearsel">Clear selection</button>
+        <input type="text" data-fk="cls-reason" placeholder="Classification reason (mandatory)" aria-label="Classification reason">
+        <button type="button" class="fk-btn fk-btn-primary fk-xs" data-cls="apply">Apply</button>
+      </div>
+      <div class="fk-flag fk-flag-blue" data-fk="cls-preview"></div>
+      <div class="fk-tblwrap"><table class="fk-tbl" data-fk="cls-table"></table></div>
+      <div class="fk-pager" data-fk="cls-pager"></div>
+    </section>
+    <section data-fk="cls-history" hidden>
+      <div class="fk-tblwrap"><table class="fk-tbl" data-fk="cls-htable"></table></div>
+    </section>
+  </div>
+</section>
+
+<!-- ══ 7 · AP Aging ═══════════════════════════════════════════════════════
+     Three cards, all three visible. The statement is the bridge from aged
+     bills to the net payable per books and on to the trial balance. The strip
+     is the six-bucket shape of the open bills. The table is one row per
+     enabled supplier — the five classes that used to be three separate
+     tables, two of which were hidden. -->
+<section class="fk-panel" data-fk="panel-ageing" role="tabpanel" hidden>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s5)">Where the payable stands</h3></div>
+      <div class="fk-ch-act">
+        <button type="button" class="fk-btn fk-btn-primary fk-xs" data-fk="ag-xlsx">Download report</button>
+      </div>
+    </div>
+    <div class="fk-note" data-fk="ag-stmt-scope"></div>
+    <div class="fk-stmt" data-fk="ag-stmt"></div>
+  </div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s1)">What is open, and how long it has been open</h3></div>
+      <div class="fk-ch-act">
+        <div class="fk-toggle" role="group" aria-label="Ageing basis">
+          <button type="button" data-fk="ag-bill" aria-pressed="false">Bill date</button>
+          <button type="button" data-fk="ag-post" aria-pressed="false">Posting date</button>
+          <button type="button" data-fk="ag-due" aria-pressed="true">Due date</button>
+        </div>
+        <span class="fk-togsep"></span>
+        <div class="fk-toggle" role="group" aria-label="Ageing level">
+          <button type="button" data-fk="ag-lvl-sup" aria-pressed="true">Supplier level</button>
+          <button type="button" data-fk="ag-lvl-inv" aria-pressed="false">Bill wise</button>
+        </div>
+      </div>
+    </div>
+    <div class="fk-buckets" data-fk="ag-buckets"></div>
+  </div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s4)">Every vendor, proved against the party ledger</h3></div>
+      <div class="fk-ch-act">
+        <button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="ag-csv">Supplier CSV</button>
+        <button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="ag-bill-csv">Bill-wise CSV</button>
+      </div>
+    </div>
+    <div class="fk-tblhead">
+      <input type="search" data-fk="ag-search" placeholder="Search vendor…" aria-label="Search vendors">
+    </div>
+    <div class="fk-hfnote" data-fk="ag-hfnote" aria-live="polite"></div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="ag-table"></table></div>
+    <div class="fk-pager" data-fk="ag-pager"></div>
+    <div class="fk-note" data-fk="ag-note"></div>
+  </div>
+</section>
+
+<!-- ══ 8 · Vendor Balances ════════════════════════════════════════════════ -->
+<section class="fk-panel" data-fk="panel-vbal" role="tabpanel" hidden>
+  <div class="fk-kpis" data-fk="vb-kpis"></div>
+
+  <div class="fk-card">
+    <div class="fk-ch">
+      <div><h3 style="--tone:var(--s3)">Opening, movement and closing for every vendor</h3></div>
+      <div class="fk-ch-act"><button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="vb-export">CSV</button></div>
+    </div>
+    <div class="fk-flag" data-fk="vb-tie"></div>
+    <div class="fk-tblhead">
+      <input type="search" data-fk="vb-search" placeholder="Search vendor…" aria-label="Search vendors">
+    </div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="vb-table"></table></div>
+    <div class="fk-pager" data-fk="vb-pager"></div>
+  </div>
+</section>
+
+<!-- drill-down drawer: every KPI, bar and figure opens the rows behind it -->
+<div class="fk-drawer" data-fk="drawer" hidden role="dialog" aria-modal="true" aria-label="Drill-down">
+  <div class="fk-drawer-panel">
+    <div class="fk-drawer-head">
+      <div>
+        <div class="fk-kicker" data-fk="dr-kicker">Drill-down</div>
+        <h3 data-fk="dr-title">&mdash;</h3>
+      </div>
+      <div class="fk-drawer-act">
+        <button type="button" class="fk-btn fk-xs" data-fk="dr-back" hidden>&larr; Back</button>
+        <span data-fk="dr-gl"></span>
+        <button type="button" class="fk-btn fk-btn-ghost fk-xs" data-fk="dr-export">CSV</button>
+        <button type="button" class="fk-btn fk-xs" data-fk="dr-close">Close</button>
+      </div>
+    </div>
+    <div class="fk-drawer-proof" data-fk="dr-proof"></div>
+    <div class="fk-tblwrap"><table class="fk-tbl" data-fk="dr-table"></table></div>
+    <div class="fk-pager" data-fk="dr-pager"></div>
+  </div>
+</div>
+
+<div class="fk-status" data-fk="status" role="status" aria-live="polite"></div>
+<footer class="fk-foot">
+  <span>Source: Query Report &ldquo;AP Procure to Pay Master&rdquo; &middot; read-only</span>
+  <span data-fk="foot-scope"></span>
+</footer>
+</div>
