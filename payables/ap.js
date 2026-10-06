@@ -183,6 +183,10 @@ const today = () => frappe.datetime.get_today();
 const daysAgo = (from, to) => Math.round((parse(to) - parse(from)) / 864e5);
 const dayBefore = (d) => frappe.datetime.add_days(d, -1);
 const q = (v) => encodeURIComponent(v);
+/* a CSV leaves this page, so its ERP links have to be absolute. location.origin
+   reads 'null' on an opaque origin, which would ship a dead link. */
+const ORIGIN = () => { const o = location.origin;
+  return (!o || o === 'null') ? location.protocol + '//' + location.host : o; };
 
 /* The fiscal year comes from the Fiscal Year MASTER via FurnishkaFY: resolution
    is by containment (year_start_date <= d <= year_end_date), never by month
@@ -1570,8 +1574,8 @@ COLS.agSupplierFull = COLS.agSupplier.concat([
   { k: 'led', label: 'Master report party balance', num: true, raw: (r) => r.led },
   { k: 'delta', label: 'Δ master report vs this page', num: true, raw: (r) => r.delta },
   { k: 'jrGl', label: 'Journals not linked to an invoice', num: true, raw: (r) => r.jrGl },
-  { k: 'erp_gl', label: 'ERP General Ledger', plain: (r) => location.origin + glUrl(r.id) },
-  { k: 'erp_ap', label: 'ERP Accounts Payable', plain: (r) => location.origin + apUrl(r.id) }
+  { k: 'erp_gl', label: 'ERP General Ledger', plain: (r) => ORIGIN() + glUrl(r.id) },
+  { k: 'erp_ap', label: 'ERP Accounts Payable', plain: (r) => ORIGIN() + apUrl(r.id) }
 ]);
 
 COLS.agBill = [
@@ -3231,13 +3235,30 @@ function agWorkbook() {
   R.push([B('Add: payments carrying a payable balance'), null, null, null, null, NB(A.pp)]);
   R.push([B('Add: open journal items'), null, null, null, null, NB(A.jv)]);
   R.push([B('Net payable per books'), null, null, null, null, NB(A.net)]);
-  R.push([B('Party ledger, subledger'), null, null, null, null, NB(A.led),
-    T('difference ' + inr(r2(A.net - A.led)))]);
-  R.push([B('General ledger control'), null, null, null, null,
+  R.push([B('Self-test: same grain, unsplit'), null, null, null, null, NB(A.led),
+    T('difference ' + inr(r2(A.net - A.led)) + ' — must be 0.00; proves this sheet, not the data')]);
+  R.push([]);
+  R.push([B('PROVED AGAINST ERPNEXT')]);
+  R.push([B('ERPNext Accounts Payable report'), null, null, null, null,
+    A.nat === null ? T('the native report did not answer') : NB(A.nat),
+    A.nat === null ? null : T('difference ' + inr(r2(A.net - A.nat))
+      + (A.unscoped ? '' : ' — company-wide, this sheet is filtered'))]);
+  R.push([B('Vendor ledgers, ' + AP_ACCOUNT), null, null, null, null,
+    A.vl === null ? T('the GL read did not answer') : NB(A.vl),
+    A.vl === null ? null : T('difference ' + inr(r2(A.net - A.vl))
+      + (A.unscoped ? '' : ' — company-wide, this sheet is filtered'))]);
+  R.push([B('Suppliers disagreeing with the native AP report'), null, null, null, null,
+    A.tieable ? I(A.offNat) : T('stood down'),
+    T(A.tieable ? 'of ' + A.rows.length + ' ' + plural(A.rows.length, 'supplier')
+      : 'a filter drops rows inside suppliers, so the two sides differ')]);
+  R.push([B('Suppliers disagreeing with their own ledger'), null, null, null, null,
+    A.tieable ? I(A.offVl) : T('stood down'),
+    T(A.tieable ? 'of ' + A.rows.length + ' ' + plural(A.rows.length, 'supplier')
+      : 'a filter drops rows inside suppliers, so the two sides differ')]);
+  R.push([B('General ledger control total'), null, null, null, null,
     A.gl === null ? T('not comparable at this scope') : NB(A.gl),
-    A.gl === null ? null : T('difference ' + inr(r2(A.led - A.gl)))]);
-  R.push([B('Suppliers off the identity by more than ' + inr(TOL)), null, null, null, null, I(A.off),
-    T('of ' + A.rows.length + ' ' + plural(A.rows.length, 'supplier'))]);
+    A.gl === null ? null : T('difference ' + inr(r2((A.vl === null ? A.led : A.vl) - A.gl)))]);
+  R.push([]);
   R.push([B('Schedule III reclass, Dr balances'), null, null, null, null, NB(A.dr),
     T(A.drN + ' ' + plural(A.drN, 'supplier'))]);
   R.push([]);
@@ -3313,9 +3334,17 @@ const EXPORTS = {
       [['Σ buckets', A.bucketSum], ['Debit notes', A.dn],
        ['Bills outstanding', r2(A.bucketSum + A.dn)],
        ['Less advance', -A.adv], ['Add payments on account', A.pp], ['Add journals', A.jv],
-       ['Net payable per books', A.net], ['Party ledger', A.led],
-       ['General ledger control', A.gl === null ? 'not comparable at this scope' : A.gl],
-       ['Suppliers off the identity', A.off], ['Schedule III Dr reclass', A.dr]]); },
+       ['Net payable per books', A.net],
+       ['Self-test: same grain unsplit (must be 0.00)', r2(A.net - A.led)],
+       ['PROVED AGAINST ERPNEXT', ''],
+       ['ERPNext Accounts Payable report', A.nat === null ? 'did not answer' : A.nat],
+       ['Vendor ledgers, ' + AP_ACCOUNT, A.vl === null ? 'did not answer' : A.vl],
+       ['Suppliers disagreeing with the native AP report',
+        A.tieable ? A.offNat : 'stood down — a filter drops rows inside suppliers'],
+       ['Suppliers disagreeing with their own ledger',
+        A.tieable ? A.offVl : 'stood down — a filter drops rows inside suppliers'],
+       ['General ledger control total', A.gl === null ? 'not comparable at this scope' : A.gl],
+       ['Schedule III Dr reclass', A.dr]]); },
   'ag-bill-csv': () => csvExport('AP aging bill-wise, ' + S.A.basis.toLowerCase(),
     stripCols(COLS.agBill), hfSort(hfPass(S.A.bills, 'agb', COLS.agBill), 'agb', COLS.agBill),
     BANDS.map((b, i) => [b.label, S.A.bands[i]])
@@ -3890,7 +3919,9 @@ async function reload(keepPages) {
     console.log('[AP v29] ready · ' + countOf(S.A.rows ? S.A.rows.length : 0, 'supplier') + ' · bills '
       + inr(S.A.billTot) + ' · net ' + inr(S.A.net) + ' · party ledger ' + inr(S.A.led)
       + ' · GL ' + (S.A.gl === null ? 'not comparable at this scope' : inr(S.A.gl))
-      + ' · off-identity ' + cnt(S.A.off));
+      + ' · off native AP ' + (S.A.tieable ? cnt(S.A.offNat) : 'n/a')
+      + ' · off vendor ledger ' + (S.A.tieable ? cnt(S.A.offVl) : 'n/a')
+      + ' · self-test Δ ' + inr(r2(S.A.net - S.A.led)));
   } catch (e) {
     console.error('[AP] boot', e);
     status('Could not start. ' + (e && e.message ? e.message : ''), 'err');
