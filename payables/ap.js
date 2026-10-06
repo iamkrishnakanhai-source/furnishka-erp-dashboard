@@ -234,10 +234,15 @@ const BANDS = [
 const bandIdx = (age) => { const g = num(age);
   return g <= 0 ? 0 : g <= 30 ? 1 : g <= 60 ? 2 : g <= 90 ? 3 : g <= 180 ? 4 : 5; };
 
+/* The server ages too, on this filter. The grain returns the three raw dates as
+   well, so the pills re-age client-side and never cost a refetch — but the
+   filter is still sent, so a raw run of the report matches what is on screen.
+   `server` is the value the report validates against; anything else falls back
+   to Overdue Date. */
 const AG_BASIS = {
-  bill:    { label: 'Bill date',    field: 'supplier_invoice_date' },
-  posting: { label: 'Posting date', field: 'date' },
-  due:     { label: 'Due date',     field: 'required_by' }
+  bill:    { label: 'Bill date',    field: 'supplier_invoice_date', server: 'Bill Date' },
+  posting: { label: 'Posting date', field: 'date',                  server: 'Posting Date' },
+  due:     { label: 'Due date',     field: 'required_by',           server: 'Due Date' }
 };
 
 /* the five classes of the one supplier table */
@@ -272,7 +277,7 @@ function runReport(over, opts) {
   const f = Object.assign({
     company: COMPANY,
     from_date: S.from, to_date: S.to, as_of: S.asOf,
-    aging_basis: 'Posting Date',
+    aging_basis: AG_BASIS[S.agBasis].server,
     row_type: 'PI Doc', source_class: '', supplier: '', supplier_group: '',
     cost_center: '', department: '', recon_state: '', ap_location: ''
   }, sc, over || {});
@@ -301,6 +306,57 @@ function glControl() {
     .catch(() => null);
 }
 const glComparable = () => !(S.loc || S.sg || S.dept);
+
+/* ── the two ERP controls ─────────────────────────────────────────────────
+   The master report is the SOURCE, because it is the only thing that carries
+   AP Location, GSTIN, route and classification. It is not allowed to be its
+   own proof. These two are what the dashboard is proved against:
+
+     1. ERPNext's own statutory "Accounts Payable" report
+     2. each vendor's own ledger — GL Entry on the payable account, by party
+
+   Both are read COMPANY-WIDE regardless of what the dashboard is scoped to.
+   That is deliberate: a per-supplier comparison is then always valid, because
+   both sides describe the same party at the same cut-off and no scope
+   mismatch can creep in. Only the grand-total comparison depends on the
+   dashboard being unscoped, and the statement says so when it is not. */
+function nativeAP() {
+  return frappe.call({ method: 'frappe.desk.query_report.run', args: {
+    report_name: 'Accounts Payable',
+    filters: { company: COMPANY, report_date: S.asOf, party_type: 'Supplier',
+      ageing_based_on: 'Due Date', range1: 30, range2: 60, range3: 90, range4: 180,
+      based_on_payment_terms: 0 },
+    ignore_prepared_report: 1 }
+  }).then((r) => {
+    const rows = (r.message && r.message.result) || [];
+    const m = new Map();
+    let n = 0;
+    rows.forEach((x) => {
+      const party = x.party || x.supplier;
+      if (!party) return;                       /* the report's own total rows */
+      const v = num(x.outstanding);
+      if (!v) return;
+      const e = m.get(party) || { out: 0, n: 0, name: x.party_name || x.supplier_name || party };
+      e.out = r2(e.out + v); e.n++;
+      m.set(party, e); n++;
+    });
+    return { byParty: m, rows: n, total: r2(Array.from(m.values()).reduce((a, e) => a + e.out, 0)) };
+  }).catch((e) => { console.warn('[AP] native Accounts Payable report unavailable', e); return null; });
+}
+
+function vendorLedger() {
+  return frappe.call({ method: 'frappe.client.get_list', args: {
+    doctype: 'GL Entry',
+    filters: { account: AP_ACCOUNT, is_cancelled: 0, company: COMPANY,
+      party_type: 'Supplier', posting_date: ['<=', S.asOf] },
+    fields: ['party', 'sum(credit-debit) as v', 'count(name) as n'],
+    group_by: 'party', limit_page_length: 0 }
+  }).then((r) => {
+    const m = new Map();
+    ((r.message) || []).forEach((x) => { if (x.party) m.set(x.party, { bal: r2(x.v), n: num(x.n) }); });
+    return { byParty: m, total: r2(Array.from(m.values()).reduce((a, e) => a + e.bal, 0)) };
+  }).catch((e) => { console.warn('[AP] vendor ledger read failed', e); return null; });
+}
 
 function supplierRoster() {
   return frappe.call({ method: 'frappe.client.get_list', args: {
@@ -413,19 +469,23 @@ async function run() {
        instant. This is what retires the capture-gap warning: there is no gap. */
     status('Loading the ledger position at the cut-off…', 'busy');
     const LEDGER = { from_date: INCEPTION, to_date: S.asOf };
-    const [openAll, unapplied, journals, control, aging, gl, roster] = await Promise.all([
+    const [openAll, unapplied, journals, control, aging, gl, roster, nat, vled] = await Promise.all([
       soft(runReport(Object.assign({ row_type: 'PI Doc' }, LEDGER)), []),
       soft(runReport(Object.assign({ row_type: 'AP Unapplied' }, LEDGER)), []),
       soft(runReport(Object.assign({ row_type: 'AP GL Journal' }, LEDGER)), []),
       soft(runReport(Object.assign({ row_type: 'AP GL Control' }, LEDGER)), []),
       soft(runReport(Object.assign({ row_type: 'AP Aging' }, LEDGER)), []),
       glComparable() ? glControl() : Promise.resolve(null),
-      supplierRoster()
+      supplierRoster(),
+      nativeAP(),
+      vendorLedger()
     ]);
     if (my !== REQ) return;
     S.L = { openAll, unapplied, journals, control, aging };
     S.gl = gl;
     S.roster = roster;
+    S.nat = nat;
+    S.vled = vled;
 
     S.lazy = {};
     S.loaded = true;
@@ -558,13 +618,21 @@ function derive() {
   L.controlV   = sum(L.control, 'outstanding');
   L.ppRows     = where(L.aging, (r) => r.entry_type === 'Payment Entry' && num(r.outstanding) > 0.005);
   L.ppV        = sum(L.ppRows, 'outstanding');
-  L.computed   = L.openTotal + L.jrNonInvV - L.unappliedV + L.ppV;
+  /* NOT + L.ppV. The AP Unapplied grain carries every Payment Entry target row
+     with advance = -amount, so a payment sitting on the payable side arrives as
+     a negative advance and '- unapplied' has already added it back. Adding it
+     again counts it twice. Confirmed against the report source, 06-Oct-2026. */
+  L.computed   = L.openTotal + L.jrNonInvV - L.unappliedV;
   L.variance   = L.computed - L.controlV;
   L.ok         = Math.abs(L.variance) <= TOL;
   /* the AP control carries no accounting dimension, so the tie is reported
      not applicable when the scope uses one rather than quietly compared */
   L.scopable   = !(S.cc || S.dept);
-  L.openingV   = sum(D.opening, 'outstanding');
+  /* the grain returns EVERY pre-period invoice with its outstanding patched from
+     the payment ledger, so a settled one comes back carrying 0.00 — counting
+     rows would overstate what is actually carried in */
+  L.openingOpen = where(D.opening, (r) => Math.abs(num(r.outstanding)) > 0.005);
+  L.openingV    = sum(L.openingOpen, 'outstanding');
 
   /* ── routes: payments and open items follow the invoice they belong to ── */
   S.ROUTE = new Map((L.openAll || []).map((r) => [r.grain_key, r.source_class]));
@@ -655,6 +723,14 @@ function deriveAgeing() {
     o.led = num(o.led) + num(r.outstanding);
   });
 
+  const tieable = !(S.loc || S.src || S.cc || S.dept || S.sg || S.recon);
+  const natBy = S.nat ? S.nat.byParty : null;
+  const vlBy  = S.vled ? S.vled.byParty : null;
+  /* a party present in a control but in no grain still has to appear, or the
+     dashboard could hide a balance simply by not knowing about it */
+  [natBy, vlBy].forEach((m) => { if (!m) return;
+    m.forEach((_v, id) => { if (!byId.has(id)) base(id, (S.roster && S.roster.get(id)) || id, 'control'); }); });
+
   const rows = [];
   byId.forEach((o) => {
     o.jrGl = jrGl.has(o.id) ? r2(jrGl.get(o.id)) : null;
@@ -664,13 +740,19 @@ function deriveAgeing() {
     o.net = r2(o.billTot + o.dn - o.adv + o.pp + o.jv);
     if (o.led !== null) { o.led = r2(o.led); o.delta = r2(o.led - o.net); }
     else { o.delta = null; }
+    /* the two ERP controls, and the dashboard's distance from each */
+    o.nat = natBy && natBy.has(o.id) ? natBy.get(o.id).out : (natBy ? 0 : null);
+    o.vl  = vlBy  && vlBy.has(o.id)  ? vlBy.get(o.id).bal  : (vlBy ? 0 : null);
+    o.dNat = (o.nat === null || !tieable) ? null : r2(o.net - o.nat);
+    o.dVl  = (o.vl  === null || !tieable) ? null : r2(o.net - o.vl);
     o.allocatable = o.adv > 0.005 ? r2(Math.min(o.adv, Math.max(o.billTot, 0))) : null;
     o.ap_location = o.locs.size === 1 ? Array.from(o.locs)[0] : o.locs.size ? 'Mixed' : '';
     o.bills.sort((x, y) => y.age - x.age || Math.abs(y.amt) - Math.abs(x.amt));
 
     const hasBills = Math.abs(o.billTot) > 0.005 || Math.abs(o.dn) > 0.005;
     const hasAdv   = o.adv > 0.005;
-    const hasLed   = o.led !== null && Math.abs(o.led) > 0.005;
+    const hasLed   = (o.led !== null && Math.abs(o.led) > 0.005)
+                  || (o.vl !== null && Math.abs(o.vl) > 0.005);
     o.cls = hasBills ? (hasAdv ? 'BA' : 'B') : hasAdv ? 'A' : hasLed ? 'L' : 'NA';
     o.action = agAction(o);
     rows.push(o);
@@ -693,8 +775,23 @@ function deriveAgeing() {
   const ledTot = r2(agTot.led);
   const glTot = S.gl ? S.gl.v : null;
 
+  const natTot = S.nat ? S.nat.total : null;
+  const vlTot  = S.vled ? S.vled.total : null;
+  const offNat = rows.filter((o) => o.dNat !== null && Math.abs(o.dNat) > TOL).length;
+  const offVl  = rows.filter((o) => o.dVl  !== null && Math.abs(o.dVl)  > TOL).length;
+
   S.A = {
     rows, bills: allBills, bands: agTot.b.map(r2),
+    nat: natTot, natRows: S.nat ? S.nat.rows : 0, vl: vlTot,
+    offNat, offVl,
+    /* Both controls hold the WHOLE supplier. Any filter that drops rows inside a
+       supplier — AP Location (the report drops rows after classifying them),
+       route, cost centre, department, group, bank state — makes a per-supplier
+       comparison meaningless, because the two sides describe different
+       populations. A supplier filter is fine: it selects which vendors to show,
+       and each one shown still carries all of its rows. */
+    tieable: !(S.loc || S.src || S.cc || S.dept || S.sg || S.recon),
+    unscoped: !(S.loc || S.sg || S.dept || S.cc || S.supplier || S.src || S.recon),
     billTot: r2(agTot.billTot), billN: agTot.billN,
     dn: r2(agTot.dn), dnN: agTot.dnN,
     adv: r2(agTot.adv), advN: agTot.advN, advHeld, advOnly,
@@ -711,6 +808,10 @@ function deriveAgeing() {
 
 /* the one action a row earns, from its own shape */
 function agAction(o) {
+  /* a disagreement with either ERP control outranks everything else: until it
+     is explained, the row's own figures cannot be acted on */
+  if ((o.dNat !== null && Math.abs(o.dNat) > TOL)
+      || (o.dVl !== null && Math.abs(o.dVl) > TOL)) return 'Investigate';
   if (o.adv > 0.005 && o.billTot > 0.005) return 'Reconcile';
   if (o.adv > 0.005) return 'Obtain bill';
   if (o.cls === 'L' || (o.delta !== null && Math.abs(o.delta) > TOL)) return 'Review';
@@ -1440,13 +1541,25 @@ COLS.agSupplier = [vendorCell,
     moneyDash('allocatable', 'Allocatable'),
     moneyDash('pp', 'Payments on account'),
     moneyDash('jv', 'Open journals'),
-    { k: 'led', label: 'Party ledger Cr+/Dr−', num: true, div: true, raw: (r) => r.led,
-      cell: (r) => r.led === null ? '<span class="zero">–</span>'
-        : glLink(r.id, inr(r.led)) },
-    { k: 'delta', label: 'Delta vs ledger', num: true, raw: (r) => r.delta,
-      cell: (r) => r.delta === null ? '<span class="zero">–</span>'
-        : Math.abs(r.delta) <= TOL ? '<span class="zero">–</span>'
-        : `<button type="button" class="fk-numbtn" data-apl="${esc(r.id)}">${esc(inr(r.delta))}</button>` },
+    /* the proof block: what this page says, then the two ERP numbers it has to
+       agree with, each with its own distance. A dash means agreement within
+       the tolerance; a figure means a real disagreement worth opening. */
+    { k: 'net', label: 'This page', num: true, div: true, raw: (r) => r.net,
+      cell: (r) => glLink(r.id, inr(r.net)) },
+    { k: 'nat', label: 'Native AP report', num: true, raw: (r) => r.nat,
+      cell: (r) => r.nat === null ? '<span class="zero">n/a</span>'
+        : erpNum(r.nat, apUrl(r.id), "Open this vendor in ERPNext's own Accounts Payable report") },
+    { k: 'dNat', label: 'Δ vs native AP', num: true, raw: (r) => r.dNat,
+      cell: (r) => r.dNat === null ? '<span class="zero">n/a</span>'
+        : Math.abs(r.dNat) <= TOL ? '<span class="zero">–</span>'
+        : `<a class="fk-numbtn" href="${apUrl(r.id)}" target="_blank" rel="noopener">${esc(inr(r.dNat))}</a>` },
+    { k: 'vl', label: 'Vendor ledger', num: true, div: true, raw: (r) => r.vl,
+      cell: (r) => r.vl === null ? '<span class="zero">n/a</span>'
+        : glLink(r.id, inr(r.vl)) },
+    { k: 'dVl', label: 'Δ vs ledger', num: true, raw: (r) => r.dVl,
+      cell: (r) => r.dVl === null ? '<span class="zero">n/a</span>'
+        : Math.abs(r.dVl) <= TOL ? '<span class="zero">–</span>'
+        : `<button type="button" class="fk-numbtn" data-apl="${esc(r.id)}">${esc(inr(r.dVl))}</button>` },
     { k: 'action', label: 'Action', nofilter: false, plain: (r) => r.action || '(none)',
       cell: (r) => r.action
         ? `<button type="button" class="fk-act" data-agact="${r.action}" data-agid="${esc(r.id)}">${esc(r.action)}</button>` : '' }
@@ -1454,7 +1567,8 @@ COLS.agSupplier = [vendorCell,
 /* the CSV carries the roster identifiers and the ERP links too */
 COLS.agSupplierFull = COLS.agSupplier.concat([
   { k: 'id', label: 'Supplier ID', plain: (r) => r.id },
-  { k: 'net', label: 'Net per report', num: true, raw: (r) => r.net },
+  { k: 'led', label: 'Master report party balance', num: true, raw: (r) => r.led },
+  { k: 'delta', label: 'Δ master report vs this page', num: true, raw: (r) => r.delta },
   { k: 'jrGl', label: 'Journals not linked to an invoice', num: true, raw: (r) => r.jrGl },
   { k: 'erp_gl', label: 'ERP General Ledger', plain: (r) => location.origin + glUrl(r.id) },
   { k: 'erp_ap', label: 'ERP Accounts Payable', plain: (r) => location.origin + apUrl(r.id) }
@@ -2053,8 +2167,9 @@ function paintOverview() {
       c: countOf(D.pr.open.length, 'receipt') + ' not fully billed · PO pending receipt ' + rs(D.po.pending),
       drill: () => drill('Unbilled receipts', D.pr.open, COLS.prFull, 'pending_bill', D.pr.unbilled) },
     { k: 'Opening open items', v: rs(L.openingV), raw: L.openingV, tone: 'var(--muted)',
-      c: countOf(D.opening.length, 'bill') + ' carried in, still open at ' + ddmmmyyyy(S.asOf),
-      drill: () => drill('Opening open items', D.opening, COLS.openItems, 'outstanding', L.openingV) },
+      c: countOf(L.openingOpen.length, 'bill') + ' carried in, still open at ' + ddmmmyyyy(S.asOf)
+        + ' · of ' + countOf(D.opening.length, 'invoice') + ' raised before the period',
+      drill: () => drill('Opening open items', L.openingOpen, COLS.openItems, 'outstanding', L.openingV) },
     { k: 'Unapplied supplier cash', v: rs(L.unappliedV), raw: L.unappliedV, tone: 'var(--s4)',
       c: countOf(L.unapplied.length, 'payment entry') + ' · '
         + cnt(new Set(L.unapplied.map((r) => r.supplier)).size) + ' vendors · click to reconcile',
@@ -2063,8 +2178,7 @@ function paintOverview() {
       tone: !L.scopable ? 'var(--muted)' : L.ok ? 'var(--s3)' : 'var(--s5)',
       c: !L.scopable ? '' : (L.ok ? '✔ within ₹0.50 tolerance' : '✖ outside ₹0.50 tolerance')
         + ' · open items ' + rs(L.openTotal) + ' + journals ' + rs(L.jrNonInvV)
-        + ' − unapplied ' + rs(L.unappliedV) + ' + payments on account ' + rs(L.ppV)
-        + ' · control ' + rs(L.controlV),
+        + ' − unapplied ' + rs(L.unappliedV) + ' · control ' + rs(L.controlV),
       drill: () => drillControlTie() }
   ]);
 
@@ -2098,9 +2212,9 @@ function drillControlTie() {
       note: cnt(L.jrNonInv.length) + ' opening and manual entries on the AP control' },
     { l: '− Unapplied cash', v: -L.unappliedV, g: 'AP Unapplied',
       note: 'derived per supplier; the ERP unallocated field is lower' },
-    { l: '+ Payments carrying a payable balance', v: L.ppV, g: 'AP Aging',
-      note: countOf(L.ppRows.length, 'payment')
-        + ' on the payable side — in the ledger but in no open item' },
+    { l: 'Memo · payments carrying a payable balance', v: L.ppV, g: 'AP Aging',
+      note: countOf(L.ppRows.length, 'payment') + ' on the payable side — already inside the '
+        + 'unapplied line above as a negative advance, so it is NOT added again' },
     { l: '= Computed AP control', v: L.computed, g: '—', note: 'what the subledger says' },
     { l: 'AP control account balance', v: L.controlV, g: 'AP GL Control',
       note: cnt(L.control.length) + ' supplier ledger rows at the cut-off' },
@@ -2577,18 +2691,54 @@ function paintAgStatement() {
     + line('Add: open journal items', A.jv, '')
     + '<div class="rule"></div>'
     + line('Net payable per books', A.net, '', 'tot')
-    + tie('Party ledger, ' + AP_ACCOUNT + ' subledger', A.net, A.led,
-        'Cr ' + inr(A.cr) + ' · Dr ' + inr(A.dr))
+    /* SELF-TEST, not a control. The master report answers AP Aging and
+       AP GL Control from one pass over tabPayment Ledger Entry with no filter
+       between them, so the two are the same rows. This line therefore proves
+       the decomposition ABOVE is arithmetically complete — a non-zero here is a
+       bug on this page, never a finding in the data. It is the line that would
+       have caught v28 omitting debit notes and payments on account. */
+    + tie('Self-test: the decomposition above vs the same grain, unsplit', A.net, A.led,
+        'same rows — must be 0.00')
+    + '<div class="rule"></div>'
+
+    /* THE CONTROLS. Different code paths over the same facts: the native report
+       is ERPNext's own implementation, and tabGL Entry is a different table
+       from the payment ledger this page is built on. */
+    + (A.nat === null
+        ? '<div>ERPNext Accounts Payable report</div><div class="n">n/a</div>'
+          + '<div class="m">the native report did not answer — see the browser console</div>'
+        : A.unscoped
+          ? tie('ERPNext Accounts Payable report', A.net, A.nat, countOf(A.natRows, 'report row'))
+          : '<div>ERPNext Accounts Payable report</div><div class="n">' + esc(inr(A.nat)) + '</div>'
+            + '<div class="m">company-wide figure' + (A.tieable
+                ? ' · filtered to suppliers here, so each row below still ties'
+                : ' · this page is filtered inside suppliers, so neither total nor row ties') + '</div>')
+    + (A.vl === null
+        ? '<div>Vendor ledgers, ' + esc(AP_ACCOUNT) + '</div><div class="n">n/a</div>'
+          + '<div class="m">the GL read did not answer — see the browser console</div>'
+        : A.unscoped
+          ? tie('Vendor ledgers, ' + AP_ACCOUNT, A.net, A.vl, 'Cr ' + inr(A.cr) + ' · Dr ' + inr(A.dr))
+          : '<div>Vendor ledgers, ' + esc(AP_ACCOUNT) + '</div><div class="n">' + esc(inr(A.vl)) + '</div>'
+            + '<div class="m">company-wide figure' + (A.tieable
+                ? ' · per-supplier ties below are unaffected'
+                : ' · per-supplier ties stood down at this scope') + '</div>')
+    + (A.tieable
+        ? `<div>Suppliers disagreeing with ERPNext&rsquo;s own AP report</div>`
+          + `<div class="n ${A.offNat ? 'bad' : 'good'}">${cnt(A.offNat)}</div>`
+          + `<div class="m">of ${cnt(A.rows.length)} · tolerance ${esc(inr(TOL))}</div>`
+          + `<div>Suppliers disagreeing with their own ledger</div>`
+          + `<div class="n ${A.offVl ? 'bad' : 'good'}">${cnt(A.offVl)}</div>`
+          + `<div class="m">of ${cnt(A.rows.length)} · tolerance ${esc(inr(TOL))}</div>`
+        : `<div>Per-supplier ties</div><div class="n">stood down</div>`
+          + `<div class="m">a filter is dropping rows inside suppliers, so the two sides `
+          + `describe different populations — clear it to prove the book</div>`)
     + (A.gl === null
-        ? '<div>General ledger control</div><div class="n">n/a</div>'
+        ? '<div>Cross-check: GL control total</div><div class="n">n/a</div>'
           + '<div class="m">not comparable at this scope — GL Entry carries no AP Location, '
           + 'supplier group or department</div>'
-        : tie('General ledger control, trial balance', A.led, A.gl, countOf(A.glN, 'GL row')))
+        : tie('Cross-check: GL control total', A.vl === null ? A.led : A.vl, A.gl, countOf(A.glN, 'GL row')))
     + tie('Cross-check: journals not linked to an invoice', A.jv, A.jrGl, 'AP GL Journal grain')
     + '<div class="rule"></div>'
-    + `<div>Suppliers whose ledger disagrees with the identity above</div>`
-    + `<div class="n ${A.off ? 'bad' : 'good'}">${cnt(A.off)}</div>`
-    + `<div class="m">of ${cnt(A.rows.length)} · tolerance ${esc(inr(TOL))}</div>`
     + `<div>Schedule III reclass — Dr balances on trade payables</div>`
     + `<div class="n less">${esc(inr(A.dr))}</div>`
     + `<div class="m">${cnt(A.drN)} ${plural(A.drN, 'supplier')} · present under Other Current Assets, never netted</div>`;
@@ -2657,7 +2807,8 @@ function paintAgTable() {
     : '';
 
   if (supLevel) {
-    const T = { billTot: 0, dn: 0, adv: 0, allocatable: 0, pp: 0, jv: 0, led: 0, net: 0, delta: 0 };
+    const T = { billTot: 0, dn: 0, adv: 0, allocatable: 0, pp: 0, jv: 0,
+                led: 0, net: 0, delta: 0, nat: 0, vl: 0, dNat: 0, dVl: 0 };
     const bandT = BANDS.map(() => 0);
     rows.forEach((r) => {
       BANDS.forEach((b, i) => bandT[i] += r.b[i]);
@@ -2666,7 +2817,8 @@ function paintAgTable() {
     const foot = { nm: (rows.length === A.rows.length ? 'TOTAL' : 'FILTERED')
       + ' · ' + cnt(rows.length) + ' of ' + countOf(A.rows.length, 'supplier') };
     BANDS.forEach((b, i) => foot[b.k] = rs(bandT[i]));
-    ['billTot', 'dn', 'adv', 'allocatable', 'pp', 'jv', 'led'].forEach((k) => foot[k] = rs(T[k]));
+    ['billTot', 'dn', 'adv', 'allocatable', 'pp', 'jv', 'net', 'nat', 'vl']
+      .forEach((k) => foot[k] = rs(T[k]));
     rows.forEach((r) => r.__key = 'ag:' + r.id);
 
     const shown = slice(rows, S.page.ag);
@@ -2682,14 +2834,20 @@ function paintAgTable() {
       hf: scope, foot, section,
       empty: 'No supplier matches the current scope.',
       recon: [
-        reconLine('Bills + debit notes − advance + payments on account + journals, vs party ledger',
-          r2(T.billTot + T.dn - T.adv + T.pp + T.jv), rows.length === A.rows.length ? T.led : null,
-          cnt(rows.filter((r) => r.delta !== null && Math.abs(r.delta) > TOL).length) + ' suppliers off'),
-        A.gl === null
-          ? '<span>Party ledger <b>' + esc(rs(T.led)) + '</b> · general ledger not comparable at this scope</span>'
-          : reconLine('Party ledger vs general ledger control',
-              rows.length === A.rows.length ? T.led : A.led, A.gl, countOf(A.glN, 'GL row'))
-      ] });
+        /* self-test of this page's own arithmetic, over the rows shown */
+        reconLine('Self-test: bills + debit notes − advance + payments on account + journals',
+          r2(T.billTot + T.dn - T.adv + T.pp + T.jv), T.net, 'same grain — must be 0.00'),
+        !A.tieable
+          ? '<span>Per-supplier ties stood down: a filter is dropping rows inside suppliers, '
+            + 'so this page and the ERP hold different populations.</span>'
+          : A.nat === null ? '<span>ERPNext Accounts Payable report did not answer.</span>'
+          : reconLine('This page vs ERPNext Accounts Payable, over the rows shown', T.net, T.nat,
+              countOf(rows.filter((r) => r.dNat !== null && Math.abs(r.dNat) > TOL).length, 'supplier') + ' off'),
+        !A.tieable ? ''
+          : A.vl === null ? '<span>Vendor ledger read did not answer.</span>'
+          : reconLine('This page vs the vendors&rsquo; own ledgers, over the rows shown', T.net, T.vl,
+              countOf(rows.filter((r) => r.dVl !== null && Math.abs(r.dVl) > TOL).length, 'supplier') + ' off')
+      ].filter(Boolean) });
     pager('ag-pager', rows.length, S.page.ag, (n2) => { S.page.ag = n2; paintAgTable(); });
   } else {
     rows.forEach((r) => r.__key = 'agb:' + r.vno);
@@ -2711,7 +2869,17 @@ function paintAgTable() {
     + 'There is no net payable column — Dr balances are reclassified under Schedule III, not netted. '
     + 'Click a figure to open the native ERP report with the same filter; the General Ledger prints '
     + 'Dr-positive, so a payable reads negative there — same magnitude, opposite sign. '
-    + countOf(S.A.nL, 'supplier') + ' sit on the ledger only, ' + cnt(S.A.nNA) + ' have no payable activity.';
+    + countOf(S.A.nL, 'supplier') + ' sit on the ledger only, ' + cnt(S.A.nNA) + ' have no payable activity.'
+    + '<br><b>The two Δ columns are the point of this table.</b> <i>This page</i> is built from the '
+    + 'master report, which answers from the payment ledger. <i>Native AP report</i> is ERPNext&rsquo;s '
+    + 'own Accounts Payable — a different implementation of the same rules. <i>Vendor ledger</i> is '
+    + 'credit minus debit on ' + esc(AP_ACCOUNT) + ' for that party, read straight from the general '
+    + 'ledger, which is a different table from the payment ledger and can drift from it silently. '
+    + 'Both controls are read company-wide, so a supplier row ties whatever vendors the page is '
+    + 'showing. A dash means agreement inside ' + esc(inr(TOL)) + '; a figure is a real disagreement '
+    + 'and the row is marked Investigate until it is explained.'
+    + (S.A.tieable ? '' : ' <b>Both Δ columns are stood down right now</b> — the active filter drops '
+      + 'rows inside suppliers, so this page and the ERP are not looking at the same population.');
 }
 
 /* ══ 19 · Vendor Credits ═════════════════════════════════════════════════
@@ -3570,7 +3738,7 @@ ROOT.addEventListener('click', async (e) => {
     const id = act.dataset.agid, a = act.dataset.agact;
     if (a === 'Reconcile') openReconciliation(id);
     else if (a === 'Obtain bill') window.open('/app/supplier/' + q(id), '_blank', 'noopener');
-    else openApLedger(id);
+    else openApLedger(id);   /* Investigate and Review both open the vendor's own ledger */
     return;
   }
   const band = hit('[data-band]');

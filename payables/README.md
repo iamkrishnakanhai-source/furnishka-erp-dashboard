@@ -67,6 +67,53 @@ Fixing that surfaced a matching gap in the Overview bridge, which read
 payable balance. That term is now an explicit line in both places, so the page no
 longer holds two different formulas for one tie.
 
+## How the page proves itself (v29.1)
+
+The master report is the **source**, because it is the only thing that carries AP
+Location, GSTIN, route and classification. It is not allowed to be its own proof.
+
+Reading the report source settled a question the dashboard could not answer from
+the outside: `AP Aging` and `AP GL Control` both fall through the same branch over
+`tabPayment Ledger Entry` with **no filter between them**. They are the same rows.
+So comparing one against the other — which is what every version up to v29.0 did —
+is structurally incapable of returning anything but zero. v28 only ever reported
+"5 suppliers off" because its formula omitted debit notes and payments on account;
+completing the formula turned a false signal into no signal at all.
+
+The ageing tab therefore carries three lines that each say what they prove:
+
+| Line | What it proves | Can it fail? |
+|---|---|---|
+| **Self-test** — the decomposition vs the same grain, unsplit | this page's arithmetic is complete | yes, and it would have caught v28 |
+| **ERPNext Accounts Payable report** | a different implementation of the same rules agrees | yes |
+| **Vendor ledgers**, `tabGL Entry` by party | the general ledger agrees with the payment ledger | yes — this is the only leg that can catch a delinked PLE row |
+
+Both controls are read **company-wide**, so a per-supplier comparison is valid
+whatever vendors the page is showing. They **stand down** when a filter drops rows
+*inside* a supplier — AP Location, route, cost centre, department, group, bank
+state — because the two sides would then describe different populations. The
+statement and the footer say so when that happens rather than printing a Δ nobody
+should trust.
+
+A supplier that disagrees with either control is marked **Investigate**, which
+outranks Reconcile and Obtain bill: until the disagreement is explained, the row's
+own figures cannot be acted on.
+
+### One correction the report source forced
+
+v29.0 added `+ payments carrying a payable balance` to the Overview bridge. That
+was wrong. `AP Unapplied` emits every Payment Entry target row with
+`advance = -amount`, so a payment sitting on the payable side already arrives as a
+negative advance and `− unapplied` adds it back. Adding it again double-counts.
+The three-term bridge was right:
+
+```
+open items + journals not linked to an invoice − unapplied cash = AP control
+```
+
+The Ageing statement is a different decomposition — it splits the `AP Aging` grain
+by sign — so it does list advances and payments-on-account separately, and ties.
+
 ## Conventions
 
 - **Sign** — party ledger is credit minus debit. Cr positive = owed to the supplier.
