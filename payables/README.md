@@ -123,12 +123,23 @@ rendered page. Prose is still allowed in three places, because each leaves the
 building or blocks an action: a thrown error, the provenance header inside an
 exported CSV/XLSX, and the confirmation dialog before a classification is written.
 
-**One family, four sizes, three weights.** `-apple-system` throughout; 20/700 for
-figures, 14/600 for headings, 12/500 for body, 11/600 for labels. No inline
-`font-*` anywhere in the markup or the script — chart text carries its role as a
-class. Verified by measuring `getComputedStyle` on every text-bearing node across
-all eight tabs: 1,715 nodes, one family, four sizes, three weights, zero
-off-scale.
+**One family, four sizes, three weights.** `-apple-system` throughout.
+
+| Weight | Belongs to | Nothing else |
+|---|---|---|
+| **700** | figures, totals, verdicts | title, KPI value, footer totals, the ✔/✖ lines |
+| **600** | every label, heading, control, chip | all 11px uppercase labels are identical: 11px / 600 / .045em |
+| **500** | body text | table cells, chip captions, option text |
+
+Sizes are 20 (figures), 14 (headings), 12 (body), 11 (labels). No inline `font-*`
+anywhere in the markup or the script — chart text carries its role as a class.
+
+The uppercase label role was previously declared six different ways; the filter
+bar sat at 700/.06em while the KPI label sat at 600/.045em, which read as a
+different typeface. One declaration now covers all seven sites.
+
+Verified by measuring `getComputedStyle` on every text-bearing node across all
+eight tabs: 1,715 nodes, one family, four sizes, three weights, zero off-scale.
 
 ## Conventions
 

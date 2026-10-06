@@ -62,11 +62,11 @@
   padding:16px 20px;border-radius:10px;color:#fff;
   background:linear-gradient(135deg,var(--navy),var(--navy-2))}
 [data-fk-block="ap-analysis"] .fk-eyebrow{
-  font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:#9fbada}
+  font-size:11px;letter-spacing:.045em;text-transform:uppercase;font-weight:600;color:#9fbada}
 [data-fk-block="ap-analysis"] .fk-title{
   margin:5px 0 4px;font-size:20px;line-height:1.2;letter-spacing:-.2px;color:#fff;font-weight:700}
 [data-fk-block="ap-analysis"] .fk-dept{
-  display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  display:block;font-size:11px;letter-spacing:.045em;text-transform:uppercase;
   opacity:.62;margin-top:.28rem;color:#fff}
 [data-fk-block="ap-analysis"] .fk-head-act{display:flex;align-items:center;gap:10px}
 [data-fk-block="ap-analysis"] .fk-asof{
@@ -106,8 +106,9 @@
 [data-fk-block="ap-analysis"] .fk-filters > *{align-self:end}
 [data-fk-block="ap-analysis"] .fk-dates > label,
 [data-fk-block="ap-analysis"] .fk-filters > label{
-  display:grid;grid-template-rows:16px 40px;row-gap:5px;min-width:0;width:auto;margin:0;
-  font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+  display:grid;grid-template-rows:14px 40px;row-gap:6px;min-width:0;width:auto;margin:0;
+  font-size:11px;font-weight:600;line-height:1.25;letter-spacing:.045em;
+  color:var(--muted);text-transform:uppercase}
 [data-fk-block="ap-analysis"] .fk-dates > label[hidden],
 [data-fk-block="ap-analysis"] .fk-filters > label[hidden]{display:none !important}
 
@@ -142,14 +143,14 @@
   background:var(--tone,var(--s1))}
 [data-fk-block="ap-analysis"] .fk-ch-act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 [data-fk-block="ap-analysis"] .fk-kicker{
-  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--s1)}
+  font-size:11px;font-weight:600;letter-spacing:.045em;text-transform:uppercase;color:var(--s1)}
 
 /* timeline card keeps its controls on one line */
 [data-fk-block="ap-analysis"] .fk-card.fk-track .fk-ch{flex-wrap:nowrap;gap:16px}
 [data-fk-block="ap-analysis"] .fk-chart-controls{display:flex;align-items:center;flex-wrap:nowrap;gap:10px}
 [data-fk-block="ap-analysis"] .fk-chart-grain{
-  display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.06em;
-  font-weight:700;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.045em;
+  font-weight:600;text-transform:uppercase;color:var(--muted);white-space:nowrap}
 [data-fk-block="ap-analysis"] .fk-chart-grain select{
   height:30px;border:1px solid var(--rule);border-radius:6px;padding:0 8px;background:#fff;
   min-width:112px;font-size:12px}
@@ -262,7 +263,7 @@
 
 /* vendor-credit door badges */
 [data-fk-block="ap-analysis"] .fk-door{
-  display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+  display:inline-block;font-size:11px;font-weight:600;letter-spacing:.045em;
   padding:2px 6px;border-radius:4px;margin-right:6px;vertical-align:1px}
 [data-fk-block="ap-analysis"] .fk-door.dn{background:#fbe9e9;color:var(--crit)}
 [data-fk-block="ap-analysis"] .fk-door.pe{background:#e6f4ec;color:var(--ok)}
@@ -279,7 +280,7 @@
 [data-fk-block="ap-analysis"] .dsub{fill:var(--muted);font-size:11px}
 /* chart text carries its role as a class, so the type scale lives in one file */
 [data-fk-block="ap-analysis"] .tick-msg{fill:var(--muted);font-size:12px;font-weight:500}
-[data-fk-block="ap-analysis"] .tick-key{font-size:11px;font-weight:700}
+[data-fk-block="ap-analysis"] .tick-key{font-size:11px;font-weight:600}
 [data-fk-block="ap-analysis"] .blabel{fill:var(--ink);font-size:11px;font-weight:600}
 [data-fk-block="ap-analysis"] .hit{cursor:pointer}
 [data-fk-block="ap-analysis"] .fk-legend{
@@ -323,7 +324,7 @@
   position:sticky;top:0;z-index:3;background:var(--surface);
   box-shadow:inset 0 -1px 0 var(--rule);
   padding:9px 12px;text-align:left;white-space:nowrap;
-  font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);
+  font-size:11px;font-weight:600;letter-spacing:.045em;text-transform:uppercase;color:var(--ink-2);
   cursor:pointer;user-select:none}
 [data-fk-block="ap-analysis"] .fk-tbl th.num{text-align:right}
 [data-fk-block="ap-analysis"] .fk-tbl th.div{border-left:1px solid var(--grid)}
@@ -354,7 +355,7 @@
 [data-fk-block="ap-analysis"] .fk-lnk{color:var(--s1);text-decoration:none;font-weight:600}
 [data-fk-block="ap-analysis"] .fk-lnk:hover{text-decoration:underline}
 [data-fk-block="ap-analysis"] .fk-exp{
-  border:0;background:transparent;color:var(--s1);font-weight:700;cursor:pointer;
+  border:0;background:transparent;color:var(--s1);font-weight:600;cursor:pointer;
   padding:0 6px 0 0;font-size:11px}
 [data-fk-block="ap-analysis"] .fk-numbtn{
   border:0;background:none;padding:0;font:inherit;font-variant-numeric:tabular-nums;cursor:pointer;
@@ -400,7 +401,7 @@
 [data-fk-block="ap-analysis"] .fk-hf .hf-b input{flex:0 0 auto}
 [data-fk-block="ap-analysis"] .fk-hf .hf-l{
   display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);
-  text-transform:uppercase;letter-spacing:.06em}
+  text-transform:uppercase;letter-spacing:.045em}
 [data-fk-block="ap-analysis"] .fk-hf .hf-nums{display:flex;gap:6px}
 [data-fk-block="ap-analysis"] .fk-hf .hf-list{
   overflow-x:hidden;overflow-y:auto;max-height:220px;
@@ -426,7 +427,7 @@
   padding:7px 0;border-bottom:1px solid #f1f3f5;font-size:11px;cursor:pointer}
 [data-fk-block="ap-analysis"] .fk-irow:last-child{border-bottom:0}
 [data-fk-block="ap-analysis"] .fk-irow.hd{
-  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  font-size:11px;font-weight:600;letter-spacing:.045em;text-transform:uppercase;color:var(--muted);
   border-bottom:1px solid var(--rule);cursor:default}
 [data-fk-block="ap-analysis"] .fk-irow:not(.hd):hover{background:#f9fbfd}
 [data-fk-block="ap-analysis"] .fk-irow .nm{display:flex;align-items:center;gap:7px;font-weight:600}
