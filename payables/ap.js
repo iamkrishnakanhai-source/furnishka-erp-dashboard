@@ -257,11 +257,7 @@ const CLASSES = {
   L:  { label: 'Ledger only',       tone: 'c-crit', group: 2 },
   NA: { label: 'No activity',       tone: 'c-neu',  group: 3 }
 };
-const GROUP_NOTE = {
-  1: 'Advance only — cash paid out, no bill booked. Not aged: there is no bill to be late against.',
-  2: 'Ledger only — carries a balance on ' + AP_ACCOUNT + ' but no open item in the ageing grain.',
-  3: 'No activity — enabled in the supplier master, nothing on the payable ledger.'
-};
+const GROUP_NOTE = { 1: 'Advance only', 2: 'Ledger only', 3: 'No activity' };
 
 /* ══ 2 · read-only query layer ═══════════════════════════════════════════ */
 
@@ -1182,7 +1178,7 @@ function kpi(host, items) {
 }
 
 const emptySvg = (m) =>
-  `<text class="tick" x="50%" y="50%" text-anchor="middle" style="font-size:12px">${esc(m)}</text>`;
+  `<text class="tick-msg" x="50%" y="50%" text-anchor="middle">${esc(m)}</text>`;
 
 function barChart(target, rows, opt) {
   opt = opt || {};
@@ -1196,7 +1192,7 @@ function barChart(target, rows, opt) {
   svg.innerHTML = rows.map((r, i) => {
     const y = p.t + i * rowH, w = Math.max(2, Math.abs(r.v) / max * bw);
     return `<g class="${r.key != null ? 'hit' : ''}"${r.key != null ? ` data-bar="${esc(String(r.key))}"` : ''}>`
-      + `<text class="tick" text-anchor="end" x="${p.l - 10}" y="${y + 16}" style="fill:var(--ink);font-weight:600">${esc(r.label)}</text>`
+      + `<text class="blabel" text-anchor="end" x="${p.l - 10}" y="${y + 16}">${esc(r.label)}</text>`
       + `<rect x="${p.l}" y="${y + 5}" width="${w}" height="16" rx="3" fill="${r.colour || 'var(--s1)'}">`
       + `<title>${esc(r.label)}: ${esc(rs(r.v))}</title></rect>`
       + `<text class="dlabel" x="${p.l + w + 8}" y="${y + 17}">${esc(rs(r.v))}</text>`
@@ -1211,7 +1207,8 @@ function table(target, cols, rows, opt) {
   const F = opt.hf ? (S.hf[opt.hf] || {}) : null;
   const sortKey = opt.hf && S.sort[opt.hf] ? S.sort[opt.hf] : null;
   const head = '<thead><tr>' + cols.map((c) =>
-    `<th class="${c.num ? 'num ' : ''}${c.div ? 'div ' : ''}${F && F[c.k] ? 'hf-on' : ''}" data-k="${esc(c.k)}">` +
+    `<th class="${c.num ? 'num ' : ''}${c.div ? 'div ' : ''}${F && F[c.k] ? 'hf-on' : ''}" data-k="${esc(c.k)}"` +
+    (c.tip ? ` title="${esc(c.tip)}"` : '') + '>' +
     esc(c.label) +
     (sortKey && sortKey.key === c.k ? `<span class="ar">${sortKey.dir > 0 ? '▲' : '▼'}</span>` : '') +
     (F && !c.nofilter ? `<button type="button" class="hf-btn" data-hfk="${esc(c.k)}" aria-label="Filter and sort ${esc(c.label)}">${F[c.k] ? '⏷' : '▾'}</button>` : '') +
@@ -1549,18 +1546,23 @@ COLS.agSupplier = [vendorCell,
        agree with, each with its own distance. A dash means agreement within
        the tolerance; a figure means a real disagreement worth opening. */
     { k: 'net', label: 'This page', num: true, div: true, raw: (r) => r.net,
+      tip: 'Bills + debit notes − advance + payments on account + journals, from the master report',
       cell: (r) => glLink(r.id, inr(r.net)) },
     { k: 'nat', label: 'Native AP report', num: true, raw: (r) => r.nat,
+      tip: "ERPNext's own Accounts Payable report for this vendor, read company-wide",
       cell: (r) => r.nat === null ? '<span class="zero">n/a</span>'
         : erpNum(r.nat, apUrl(r.id), "Open this vendor in ERPNext's own Accounts Payable report") },
     { k: 'dNat', label: 'Δ vs native AP', num: true, raw: (r) => r.dNat,
+      tip: 'Dash = agrees inside ' + inr(TOL) + '. A figure is a real disagreement.',
       cell: (r) => r.dNat === null ? '<span class="zero">n/a</span>'
         : Math.abs(r.dNat) <= TOL ? '<span class="zero">–</span>'
         : `<a class="fk-numbtn" href="${apUrl(r.id)}" target="_blank" rel="noopener">${esc(inr(r.dNat))}</a>` },
     { k: 'vl', label: 'Vendor ledger', num: true, div: true, raw: (r) => r.vl,
+      tip: 'Credit minus debit on ' + AP_ACCOUNT + ' for this party, straight from the general ledger',
       cell: (r) => r.vl === null ? '<span class="zero">n/a</span>'
         : glLink(r.id, inr(r.vl)) },
     { k: 'dVl', label: 'Δ vs ledger', num: true, raw: (r) => r.dVl,
+      tip: 'Dash = agrees inside ' + inr(TOL) + '. A figure is a real disagreement.',
       cell: (r) => r.dVl === null ? '<span class="zero">n/a</span>'
         : Math.abs(r.dVl) <= TOL ? '<span class="zero">–</span>'
         : `<button type="button" class="fk-numbtn" data-apl="${esc(r.id)}">${esc(inr(r.dVl))}</button>` },
@@ -2071,7 +2073,8 @@ function paintScope() {
     + (S.dept ? `department <b>${esc(S.dept)}</b> · ` : '')
     + (S.src ? `route <b>${esc(S.src)}</b> · ` : '')
     + (S.recon ? `bank state <b>${esc(S.recon)}</b> · ` : '')
-    + (!L.scopable ? '<span>Ledger tie not applicable at cost-centre or department scope</span>'
+    + (!L.scopable
+       ? '<span title="The AP control carries no accounting dimension">Ledger tie n/a at this scope</span>'
        : L.ok ? `<span class="ok">✔ Ledger tie Δ ${esc(rs(L.variance))}</span>`
        : `<span class="bad">✖ Ledger Δ ${esc(rs(L.variance))}</span>`);
   el('foot-scope').textContent =
@@ -2200,7 +2203,7 @@ function paintOverview() {
     + `<span class="nm"><span>${r.icon}</span>${esc(r.label)}</span>`
     + `<span class="track"><i style="width:${(Math.abs(r.v) / rmax * 100).toFixed(1)}%;background:${r.colour}"></i></span>`
     + `<span class="amt">${rs(r.v)}<small>${cnt(r.n)} documents · ${pct(Math.abs(r.v), Math.abs(D.pi.gross))}</small></span></div>`).join('')
-    + `<div class="fk-outrow"><span class="nm" style="font-weight:700">Net booked purchase</span>`
+    + `<div class="fk-outrow"><span class="nm tot">Net booked purchase</span>`
     + `<span class="track"></span><span class="amt">${rs(D.pi.gross)}</span></div>`;
 
   paintLocationRecon();
@@ -2233,10 +2236,9 @@ function drillControlTie() {
     { k: 'g', label: 'Grain' }, { k: 'note', label: 'Reading' }
   ], null, null, null, {
     proofBad: !L.ok,
-    proof: (L.ok ? '✔' : '✖') + ' Open items measured from ledger movement at '
-      + esc(ddmmmyyyy(S.asOf)) + ', not from the current outstanding field, so a past cut-off '
-      + 'returns the position as it stood then. Variance <b>' + esc(rs(L.variance))
-      + '</b> against a tolerance of <b>' + esc(inr(TOL)) + '</b>.' });
+    proof: (L.ok ? '✔' : '✖') + ' Variance <b>' + esc(rs(L.variance))
+      + '</b> · tolerance <b>' + esc(inr(TOL)) + '</b> · cut-off <b>'
+      + esc(ddmmmyyyy(S.asOf)) + '</b>' });
 }
 
 /* AP subledger to ledger, proved separately for every registration. Every grain
@@ -2275,10 +2277,9 @@ function paintLocationRecon() {
     .filter((r) => r.conflict_details)
     .map((r) => r.classification_doctype + '|' + r.classification_docname)
     .filter((v, i, a) => a.indexOf(v) === i).length;
-  el('ov-locnote').innerHTML = 'Allocations follow the invoice they settle; unallocated cash follows '
-    + 'the payment; journals against an invoice follow the invoice. Click any figure for the rows behind it.'
-    + (disputed ? ' · <b>' + cnt(disputed) + '</b> documents carry a GST registration that disagrees '
-      + 'with their cost centre — listed on the Categorise AP Location tab.' : '');
+  el('ov-locnote').innerHTML = disputed
+    ? '<b>' + countOf(disputed, 'document') + '</b> GSTIN vs cost centre \u00b7 see Categorise AP Location'
+    : '';
 }
 
 /* ══ 15 · Purchase Orders ════════════════════════════════════════════════ */
@@ -2360,7 +2361,7 @@ function paintCohort() {
   });
   keys.forEach((k, j) => {
     h += `<rect x="${p.l + j * 148}" y="${p.t - 12}" width="11" height="4" rx="2" fill="${k[2]}"/>`;
-    h += `<text class="tick" x="${p.l + j * 148 + 16}" y="${p.t - 8}" style="font-weight:700">${esc(k[1])}</text>`;
+    h += `<text class="tick-key" x="${p.l + j * 148 + 16}" y="${p.t - 8}">${esc(k[1])}</text>`;
   });
   svg.innerHTML = h;
 
@@ -2416,8 +2417,8 @@ function paintGRN() {
       if (i % step === 0 || i === n - 1)
         h += `<text class="tick" text-anchor="middle" x="${cx(i)}" y="${p.t + ih + 17}">${esc(bucketLabel(r.k))}</text>`;
     });
-    h += `<text class="tick" x="${p.l}" y="${p.t - 6}" style="font-weight:700;fill:var(--s3)">■ Received</text>`;
-    h += `<text class="tick" x="${p.l + 90}" y="${p.t - 6}" style="font-weight:700;fill:var(--s2)">■ Invoiced</text>`;
+    h += `<text class="tick-key" x="${p.l}" y="${p.t - 6}" fill="var(--s3)">■ Received</text>`;
+    h += `<text class="tick-key" x="${p.l + 90}" y="${p.t - 6}" fill="var(--s2)">■ Invoiced</text>`;
     svg.innerHTML = h;
   }
 
@@ -2668,9 +2669,9 @@ function paintAgStatement() {
     S.supplier ? 'supplier ' + (supplierName(S.supplier) || S.supplier) : '',
     S.sg ? 'group ' + S.sg : '', S.cc ? 'cost centre ' + S.cc : '',
     S.dept ? 'department ' + S.dept : ''].filter(Boolean);
-  el('ag-stmt-scope').innerHTML = `<b>${esc(AP_ACCOUNT)}</b> as at <b>${esc(ddmmmyyyy(S.asOf))}</b> · `
-    + `aged on ${esc(A.basis.toLowerCase())} · ₹ with paise · `
-    + (scope.length ? '<b>scoped to ' + esc(scope.join(' and ')) + '</b>' : '<b>company-wide</b>');
+  el('ag-stmt-scope').innerHTML = `<b>${esc(AP_ACCOUNT)}</b> · as at <b>${esc(ddmmmyyyy(S.asOf))}</b> · `
+    + `aged on ${esc(A.basis.toLowerCase())} · `
+    + (scope.length ? '<b>' + esc(scope.join(' · ')) + '</b>' : '<b>company-wide</b>');
 
   const line = (label, v, memo, cls) =>
     `<div class="${cls || ''}">${label}</div><div class="n ${cls || ''}">${esc(inr(v))}</div>`
@@ -2701,8 +2702,7 @@ function paintAgStatement() {
        the decomposition ABOVE is arithmetically complete — a non-zero here is a
        bug on this page, never a finding in the data. It is the line that would
        have caught v28 omitting debit notes and payments on account. */
-    + tie('Self-test: the decomposition above vs the same grain, unsplit', A.net, A.led,
-        'same rows — must be 0.00')
+    + tie('Self-test: same grain, unsplit', A.net, A.led, 'must be 0.00')
     + '<div class="rule"></div>'
 
     /* THE CONTROLS. Different code paths over the same facts: the native report
@@ -2710,22 +2710,24 @@ function paintAgStatement() {
        from the payment ledger this page is built on. */
     + (A.nat === null
         ? '<div>ERPNext Accounts Payable report</div><div class="n">n/a</div>'
-          + '<div class="m">the native report did not answer — see the browser console</div>'
+          + '<div class="m" title="See the browser console">no answer</div>'
         : A.unscoped
           ? tie('ERPNext Accounts Payable report', A.net, A.nat, countOf(A.natRows, 'report row'))
           : '<div>ERPNext Accounts Payable report</div><div class="n">' + esc(inr(A.nat)) + '</div>'
-            + '<div class="m">company-wide figure' + (A.tieable
-                ? ' · filtered to suppliers here, so each row below still ties'
-                : ' · this page is filtered inside suppliers, so neither total nor row ties') + '</div>')
+            + '<div class="m" title="' + (A.tieable
+                ? 'Filtered to suppliers here, so each row below still ties.'
+                : 'This page is filtered inside suppliers, so neither total nor row ties.')
+            + '">company-wide</div>')
     + (A.vl === null
         ? '<div>Vendor ledgers, ' + esc(AP_ACCOUNT) + '</div><div class="n">n/a</div>'
-          + '<div class="m">the GL read did not answer — see the browser console</div>'
+          + '<div class="m" title="See the browser console">no answer</div>'
         : A.unscoped
           ? tie('Vendor ledgers, ' + AP_ACCOUNT, A.net, A.vl, 'Cr ' + inr(A.cr) + ' · Dr ' + inr(A.dr))
           : '<div>Vendor ledgers, ' + esc(AP_ACCOUNT) + '</div><div class="n">' + esc(inr(A.vl)) + '</div>'
-            + '<div class="m">company-wide figure' + (A.tieable
-                ? ' · per-supplier ties below are unaffected'
-                : ' · per-supplier ties stood down at this scope') + '</div>')
+            + '<div class="m" title="' + (A.tieable
+                ? 'Per-supplier ties below are unaffected.'
+                : 'Per-supplier ties stood down at this scope.')
+            + '">company-wide</div>')
     + (A.tieable
         ? `<div>Suppliers disagreeing with ERPNext&rsquo;s own AP report</div>`
           + `<div class="n ${A.offNat ? 'bad' : 'good'}">${cnt(A.offNat)}</div>`
@@ -2734,18 +2736,18 @@ function paintAgStatement() {
           + `<div class="n ${A.offVl ? 'bad' : 'good'}">${cnt(A.offVl)}</div>`
           + `<div class="m">of ${cnt(A.rows.length)} · tolerance ${esc(inr(TOL))}</div>`
         : `<div>Per-supplier ties</div><div class="n">stood down</div>`
-          + `<div class="m">a filter is dropping rows inside suppliers, so the two sides `
-          + `describe different populations — clear it to prove the book</div>`)
+          + `<div class="m" title="A filter is dropping rows inside suppliers, so this page and `
+          + `the ERP hold different populations. Clear it to prove the book.">filter scope</div>`)
     + (A.gl === null
         ? '<div>Cross-check: GL control total</div><div class="n">n/a</div>'
-          + '<div class="m">not comparable at this scope — GL Entry carries no AP Location, '
-          + 'supplier group or department</div>'
+          + '<div class="m" title="GL Entry carries no AP Location, supplier group or department">at this scope</div>'
         : tie('Cross-check: GL control total', A.vl === null ? A.led : A.vl, A.gl, countOf(A.glN, 'GL row')))
     + tie('Cross-check: journals not linked to an invoice', A.jv, A.jrGl, 'AP GL Journal grain')
     + '<div class="rule"></div>'
     + `<div>Schedule III reclass — Dr balances on trade payables</div>`
     + `<div class="n less">${esc(inr(A.dr))}</div>`
-    + `<div class="m">${cnt(A.drN)} ${plural(A.drN, 'supplier')} · present under Other Current Assets, never netted</div>`;
+    + `<div class="m" title="Present under Other Current Assets. Never netted against trade payables.">`
+    + `${countOf(A.drN, 'supplier')} · Other Current Assets</div>`;
 }
 
 function paintAgBuckets() {
@@ -2839,17 +2841,14 @@ function paintAgTable() {
       empty: 'No supplier matches the current scope.',
       recon: [
         /* self-test of this page's own arithmetic, over the rows shown */
-        reconLine('Self-test: bills + debit notes − advance + payments on account + journals',
-          r2(T.billTot + T.dn - T.adv + T.pp + T.jv), T.net, 'same grain — must be 0.00'),
-        !A.tieable
-          ? '<span>Per-supplier ties stood down: a filter is dropping rows inside suppliers, '
-            + 'so this page and the ERP hold different populations.</span>'
-          : A.nat === null ? '<span>ERPNext Accounts Payable report did not answer.</span>'
-          : reconLine('This page vs ERPNext Accounts Payable, over the rows shown', T.net, T.nat,
+        reconLine('Self-test', r2(T.billTot + T.dn - T.adv + T.pp + T.jv), T.net),
+        !A.tieable ? '<span>Per-supplier ties stood down</span>'
+          : A.nat === null ? '<span>ERPNext Accounts Payable \u00b7 no answer</span>'
+          : reconLine('vs ERPNext Accounts Payable', T.net, T.nat,
               countOf(rows.filter((r) => r.dNat !== null && Math.abs(r.dNat) > TOL).length, 'supplier') + ' off'),
         !A.tieable ? ''
-          : A.vl === null ? '<span>Vendor ledger read did not answer.</span>'
-          : reconLine('This page vs the vendors&rsquo; own ledgers, over the rows shown', T.net, T.vl,
+          : A.vl === null ? '<span>Vendor ledgers \u00b7 no answer</span>'
+          : reconLine('vs vendor ledgers', T.net, T.vl,
               countOf(rows.filter((r) => r.dVl !== null && Math.abs(r.dVl) > TOL).length, 'supplier') + ' off')
       ].filter(Boolean) });
     pager('ag-pager', rows.length, S.page.ag, (n2) => { S.page.ag = n2; paintAgTable(); });
@@ -2865,25 +2864,12 @@ function paintAgTable() {
     pager('ag-pager', rows.length, S.page.ag, (n2) => { S.page.ag = n2; paintAgTable(); });
   }
 
-  el('ag-note').innerHTML =
-    'One row per ' + (supLevel ? 'enabled supplier — every vendor in the master, so a vendor with no '
-      + 'payable activity is accounted for rather than silently absent' : 'open bill')
-    + '. Party ledger is credit minus debit on ' + esc(AP_ACCOUNT)
-    + ': <b>Cr positive = owed</b> to the supplier, <b>Dr negative = net receivable</b>. '
-    + 'There is no net payable column — Dr balances are reclassified under Schedule III, not netted. '
-    + 'Click a figure to open the native ERP report with the same filter; the General Ledger prints '
-    + 'Dr-positive, so a payable reads negative there — same magnitude, opposite sign. '
-    + countOf(S.A.nL, 'supplier') + ' sit on the ledger only, ' + cnt(S.A.nNA) + ' have no payable activity.'
-    + '<br><b>The two Δ columns are the point of this table.</b> <i>This page</i> is built from the '
-    + 'master report, which answers from the payment ledger. <i>Native AP report</i> is ERPNext&rsquo;s '
-    + 'own Accounts Payable — a different implementation of the same rules. <i>Vendor ledger</i> is '
-    + 'credit minus debit on ' + esc(AP_ACCOUNT) + ' for that party, read straight from the general '
-    + 'ledger, which is a different table from the payment ledger and can drift from it silently. '
-    + 'Both controls are read company-wide, so a supplier row ties whatever vendors the page is '
-    + 'showing. A dash means agreement inside ' + esc(inr(TOL)) + '; a figure is a real disagreement '
-    + 'and the row is marked Investigate until it is explained.'
-    + (S.A.tieable ? '' : ' <b>Both Δ columns are stood down right now</b> — the active filter drops '
-      + 'rows inside suppliers, so this page and the ERP are not looking at the same population.');
+  /* No annotation on the face. Column headers carry their tip on hover; the
+     reasoning lives in this file's comments and in the README. */
+  el('ag-note').innerHTML = supLevel
+    ? countOf(S.A.nL, 'supplier') + ' ledger only \u00b7 ' + cnt(S.A.nNA) + ' no activity'
+      + (S.A.tieable ? '' : ' \u00b7 \u0394 columns stood down')
+    : '';
 }
 
 /* ══ 19 · Vendor Credits ═════════════════════════════════════════════════
@@ -3002,7 +2988,7 @@ function paintVBal() {
     + `Opening <b>${esc(rs(opened))}</b> + movement <b>${esc(rs(moved))}</b> = closing <b>${esc(rs(closed))}</b>`
     + ` · AP control <b>${esc(rs(L.controlV))}</b> · Δ <b>${esc(rs(r2(closed - num(L.controlV))))}</b>`
     + ` · tolerance ${esc(inr(TOL))} · rows off: <b>${cnt(off)}</b>`
-    + ` · opening taken at <b>${esc(ddmmmyyyy(dayBefore(S.from)))}</b>, the day before the period starts`;
+    + ` · opening <b>${esc(ddmmmyyyy(dayBefore(S.from)))}</b>`;
 
   table('vb-table', COLS.vb, slice(rows, S.page.vb), {
     hf: 'vb',
@@ -3096,7 +3082,7 @@ function paintCls() {
     + `<button type="button" class="fk-btn fk-btn-ghost fk-xs" data-hfclear="cls">Clear</button>` : '';
   el('cls-preview').innerHTML = c.view === 'flags'
     ? `<b>${cnt(rows.length)}</b> documents · value <b>${esc(rs(rows.reduce((a, r) => a + Math.abs(r.amount), 0)))}</b>`
-      + ' · already classified by their GST registration; the cost centre disagrees and needs correcting in ERP' + clear
+      + ' · GSTIN vs cost centre' + clear
     : `<b>${cnt(selRows.length)}</b> selected · value <b>${esc(rs(selV))}</b>`
       + (selRows.length ? ' · ' + ['BLR', 'JDP'].map((l) =>
           l + ' ' + cnt(selRows.filter((r) => c.proposed[r.key] === l).length)).join(' · ')

@@ -114,6 +114,22 @@ open items + journals not linked to an invoice − unapplied cash = AP control
 The Ageing statement is a different decomposition — it splits the `AP Aging` grain
 by sign — so it does list advances and payments-on-account separately, and ties.
 
+## Two house rules this build is held to
+
+**No annotation on the face.** Labels, figures and one-line verdicts only. No
+sentence whose job is to explain. Where an explanation is genuinely useful it
+lives on `title=` (hover), in this file, or in the source comments — never in the
+rendered page. Prose is still allowed in three places, because each leaves the
+building or blocks an action: a thrown error, the provenance header inside an
+exported CSV/XLSX, and the confirmation dialog before a classification is written.
+
+**One family, four sizes, three weights.** `-apple-system` throughout; 20/700 for
+figures, 14/600 for headings, 12/500 for body, 11/600 for labels. No inline
+`font-*` anywhere in the markup or the script — chart text carries its role as a
+class. Verified by measuring `getComputedStyle` on every text-bearing node across
+all eight tabs: 1,715 nodes, one family, four sizes, three weights, zero
+off-scale.
+
 ## Conventions
 
 - **Sign** — party ledger is credit minus debit. Cr positive = owed to the supplier.

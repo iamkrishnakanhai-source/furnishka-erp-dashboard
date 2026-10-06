@@ -205,6 +205,7 @@
 [data-fk-block="ap-analysis"] .fk-outrow.hit{cursor:pointer}
 [data-fk-block="ap-analysis"] .fk-outrow.hit:hover{background:#f9fbfd}
 [data-fk-block="ap-analysis"] .fk-outrow .nm{display:flex;align-items:center;gap:7px;font-weight:600}
+[data-fk-block="ap-analysis"] .fk-outrow .nm.tot{font-weight:700}
 [data-fk-block="ap-analysis"] .fk-outrow .track{height:14px;background:#f1f3f6;border-radius:3px;overflow:hidden}
 [data-fk-block="ap-analysis"] .fk-outrow .track i{display:block;height:100%;border-radius:3px;min-width:3px}
 [data-fk-block="ap-analysis"] .fk-outrow .amt{
@@ -226,6 +227,7 @@
   display:block;min-width:0;background:#f1f3f6;border-radius:4px;overflow:hidden}
 [data-fk-block="ap-analysis"] .fk-bucket .bf{display:block;height:16px;border-radius:4px;min-width:2px}
 [data-fk-block="ap-analysis"] .fk-bucket .bv{
+  font-size:12px;font-weight:500;
   font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink);text-align:right}
 [data-fk-block="ap-analysis"] .fk-bucket:hover .bv{color:var(--s1)}
 
@@ -275,6 +277,10 @@
 [data-fk-block="ap-analysis"] .dlabel{
   fill:var(--ink);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
 [data-fk-block="ap-analysis"] .dsub{fill:var(--muted);font-size:11px}
+/* chart text carries its role as a class, so the type scale lives in one file */
+[data-fk-block="ap-analysis"] .tick-msg{fill:var(--muted);font-size:12px;font-weight:500}
+[data-fk-block="ap-analysis"] .tick-key{font-size:11px;font-weight:700}
+[data-fk-block="ap-analysis"] .blabel{fill:var(--ink);font-size:11px;font-weight:600}
 [data-fk-block="ap-analysis"] .hit{cursor:pointer}
 [data-fk-block="ap-analysis"] .fk-legend{
   display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 0;font-size:11px;color:var(--ink-2)}
@@ -355,7 +361,7 @@
   color:var(--navy);text-decoration:none}
 [data-fk-block="ap-analysis"] .fk-numbtn:hover{color:var(--s1);text-decoration:underline}
 [data-fk-block="ap-analysis"] .fk-act{
-  border:0;background:none;padding:0;font:inherit;font-weight:650;color:var(--s1);cursor:pointer}
+  border:0;background:none;padding:0;font:inherit;font-weight:600;color:var(--s1);cursor:pointer}
 [data-fk-block="ap-analysis"] .fk-act:hover{text-decoration:underline}
 
 /* ── chips ──────────────────────────────────────────────────────────────── */
@@ -371,7 +377,7 @@
 /* ── one header-filter engine, shared by every filterable table ─────────── */
 [data-fk-block="ap-analysis"] .fk-tbl th .hf-btn{
   margin-left:4px;border:1px solid transparent;background:transparent;border-radius:4px;
-  font-size:11px;line-height:1;padding:2px 4px;cursor:pointer;color:var(--muted)}
+  font-size:11px;font-weight:600;line-height:1;padding:2px 4px;cursor:pointer;color:var(--muted)}
 [data-fk-block="ap-analysis"] .fk-tbl th .hf-btn:hover{border-color:var(--rule);color:var(--navy)}
 [data-fk-block="ap-analysis"] .fk-tbl th.hf-on .hf-btn{color:#fff;background:var(--s1)}
 [data-fk-block="ap-analysis"] .fk-hfnote:not(:empty){
